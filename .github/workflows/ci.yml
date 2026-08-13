@@ -23,5 +23,22 @@ jobs:
       - name: Lint
         run: |
           python -m pip install pyflakes pycodestyle
-          python -m pyflakes markcheck.py test_markcheck.py
-          python -m pycodestyle markcheck.py test_markcheck.py
+          python -m pyflakes markcheck.py test_markcheck.py tools
+          python -m pycodestyle markcheck.py test_markcheck.py tools
+
+  web-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Browser build matches the Python module
+        run: python tools/check_parity.py
+      - name: Committed web build is current
+        run: |
+          python tools/build_web.py
+          git diff --exit-code web/index.html

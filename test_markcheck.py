@@ -132,6 +132,14 @@ class TestWhitespace(unittest.TestCase):
         h = m.scan("10\u00a0000", ALL).hits[0]
         self.assertIn("digit grouping", h["note"])
 
+    def test_trailing_nbsp_is_not_called_legitimate(self):
+        # regression: "" is a substring of every string, so an unguarded
+        # membership test annotated a trailing NBSP as French spacing.
+        # A trailing hidden space is exactly where a watermark would sit.
+        for text in ("The report concludes\u202f", "value\u00a0"):
+            h = m.scan(text, ALL).hits[0]
+            self.assertEqual(h["note"], "", text)
+
     def test_bare_nnbsp_not_annotated(self):
         # the ChatGPT-report shape: NNBSP between ordinary letters
         h = m.scan("word\u202fword", ALL).hits[0]

@@ -28,7 +28,7 @@ import tempfile
 import unicodedata
 from collections import Counter, namedtuple
 
-__version__ = "1.5.1"
+__version__ = "1.6.0"
 
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024  # 100 MB
 DEFAULT_MAX_HITS = 200_000
@@ -176,7 +176,10 @@ def _note(text, i, cp):
     if cp in (0x00A0, 0x202F):
         prev = text[i - 1] if i else ""
         nxt = text[i + 1] if i + 1 < len(text) else ""
-        if nxt in ":;!?\u00bb%" or prev == "\u00ab":
+        # nxt must be non-empty: "" is a substring of every string, so an
+        # unguarded membership test annotates a trailing NBSP as legitimate
+        # French spacing, which is exactly where a watermark would sit.
+        if (nxt and nxt in ":;!?\u00bb%") or prev == "\u00ab":
             return "French-style punctuation spacing (likely legitimate)"
         if prev.isdigit() and nxt.isdigit():
             return "digit grouping (likely legitimate)"

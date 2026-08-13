@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.6.0
+- Fix a false annotation: a NO-BREAK SPACE or NARROW NO-BREAK SPACE at the end
+  of the text was labeled "French-style punctuation spacing (likely
+  legitimate)". An empty string is a substring of every string in Python, so
+  the membership test matched when there was no following character at all.
+  A trailing hidden space is exactly where a watermark would sit, so this
+  annotation was actively misleading. Found by differential testing against
+  the new browser build.
+- Add a browser version at `web/index.html`. Paste text, see what is hiding in
+  it. Runs entirely client side; no text is uploaded, stored, or logged.
+- Add `tools/build_web.py`, which generates the browser build from
+  markcheck.py so the two cannot drift, and `tools/check_parity.py`, which
+  proves across 1519 cases that the JavaScript reports the identical hits,
+  positions, names, notes, and stripped output as the Python.
+- CI now runs the parity check and fails if the committed web build is stale.
+- Expand packaging metadata (authors, classifiers, changelog URL) and add a
+  .gitignore.
+- README: quickstart above the fold, and install paths that do not require
+  cloning first.
+- Browser build polish: a Content-Security-Policy that enforces the privacy
+  claim technically (`connect-src 'none'` means the page cannot phone home
+  even if it wanted to), a no-referrer policy, a noscript message, an
+  aria-live results region, and a horizontally scrolling results table on
+  narrow screens.
+- Browser build performance: the inline preview is capped at 8,000 characters
+  and typing is debounced, so a large document no longer rebuilds the whole
+  DOM on every keystroke. Counts and the results table still describe the
+  entire text, and the truncation is stated on screen. A pathological input
+  of 30,000 hidden characters used to generate roughly 900 KB of markup; it
+  now generates 8 KB.
+
 ## 1.5.1
 - Fix three Windows failures found by the CI matrix. A console using a locale
   codec such as cp1252 cannot encode most of Unicode, so `--strip --stdout`

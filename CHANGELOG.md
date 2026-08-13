@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.5.1
+- Fix three Windows failures found by the CI matrix. A console using a locale
+  codec such as cp1252 cannot encode most of Unicode, so `--strip --stdout`
+  raised UnicodeEncodeError on ordinary non-Latin-1 text, and a filename
+  outside the console codec crashed the report. Cleaned text is now written
+  as bytes in the source encoding, and stdout/stderr use backslashreplace so
+  undisplayable characters degrade instead of aborting the run. The binary
+  write falls back to a text write when stdout has no binary layer, as under
+  redirect_stdout or in a notebook.
+- Tests invoke the CLI with explicit UTF-8 bytes rather than subprocess text
+  mode, which encodes using the platform locale and made the suite fail on
+  Windows for reasons unrelated to the code under test.
+
 ## 1.5.0
 - `--strip` now writes the cleaned file in the encoding it read. A UTF-16 or
   UTF-32 document was previously transcoded to UTF-8 without warning; the

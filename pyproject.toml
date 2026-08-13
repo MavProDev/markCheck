@@ -10,16 +10,31 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 keywords = ["unicode", "watermark", "zero-width", "steganography", "security", "trojan-source"]
+authors = [{ name = "MavProDev (ReelDad)" }]
 classifiers = [
-  "Programming Language :: Python :: 3",
+  "Development Status :: 5 - Production/Stable",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Education",
+  "Intended Audience :: End Users/Desktop",
   "License :: OSI Approved :: MIT License",
-  "Topic :: Text Processing",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3 :: Only",
   "Topic :: Security",
+  "Topic :: Text Processing",
+  "Topic :: Utilities",
 ]
 
 [project.urls]
 Homepage = "https://github.com/MavProDev/markcheck"
 Issues = "https://github.com/MavProDev/markcheck/issues"
+Changelog = "https://github.com/MavProDev/markcheck/blob/main/CHANGELOG.md"
 
 [project.scripts]
 markcheck = "markcheck:cli"

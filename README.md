@@ -2,19 +2,14 @@
 
 ![tests](https://github.com/MavProDev/markcheck/actions/workflows/ci.yml/badge.svg)
 
-Scan text for hidden and invisible Unicode characters: zero-width characters,
-bidirectional controls, variation selectors, nonstandard whitespace, and the
-Unicode Tags block. These render as nothing (or as an ordinary-looking space)
-but occupy distinct bytes, and are used for text watermarking, steganographic
-payloads, and Trojan-Source attacks (CVE-2021-42574). The narrow no-break
-space (U+202F) reported in ChatGPT output in 2025 is in scope. markcheck
-reports what is present, where, and what it is, and can write a cleaned copy.
+Find characters hiding in text that your screen will not show you.
 
-Single file, standard library only, no dependencies. Source-agnostic: there is
-no allow/deny list tied to any vendor or model.
+```bash
+pip install markcheck
+markcheck essay.md
+```
 
 ```
-$ markcheck essay.md
 Source: essay.md
 Characters: 8214
 Hidden-character hits: 3
@@ -28,35 +23,68 @@ Hidden-character hits: 3
     line   31 col    5  U+202E RIGHT-TO-LEFT OVERRIDE
 ```
 
+Exit code `0` means clean, `1` means hidden characters were found. Add
+`--strip` to write a cleaned copy.
+
+## What it finds
+
+Five categories of characters that render as nothing, or as an ordinary space,
+while occupying real bytes: zero-width characters, bidirectional controls,
+variation selectors, nonstandard whitespace, and the Unicode Tags block. People
+use that gap for text watermarking, for steganographic payloads, and for
+Trojan-Source attacks (CVE-2021-42574). The narrow no-break space reported in
+ChatGPT output in 2025, U+202F, is in scope here.
+
+markcheck tells you what is present, exactly where, and what it is. It can hand
+back a cleaned copy too.
+
+One file. Standard library only. Zero dependencies. No list of AI vendors to
+check against, because it does not care who or what wrote the text. It reads
+bytes.
+
 ## Scope
 
-Three techniques are commonly grouped as "AI watermarking." Only one puts
-anything in the bytes, and that is the one markcheck handles.
+Three techniques get grouped together as "AI watermarking." Only one of them
+puts anything in the bytes, and that is the one markcheck handles.
 
 1. File provenance metadata (C2PA). A signed manifest in the container of an
    image or PDF. Removed by screenshots, format conversion, or re-saving.
    markcheck does not read it; use `c2patool` or `exiftool`.
-2. Hidden or lookalike characters. Non-printing code points, or space
-   variants that render like a space but carry a different code, inserted
-   into the text. markcheck detects these.
+2. Hidden or lookalike characters. Non-printing code points, or space variants
+   that render like a space but carry a different code, inserted into the
+   text. markcheck detects these.
 3. Statistical / token-distribution watermarks. These bias which ordinary
    words a model selects and add no hidden character, so nothing in the byte
    stream can reveal them. markcheck cannot detect this class, and neither can
-   any byte scanner. Rewriting the text in your own words removes it.
+   any byte scanner. Rewriting the text in your own words removes it. The
+   watermark Anthropic began shipping in Claude models in August 2026 is this
+   kind: a statistical bias in token selection, confirmed by Anthropic to
+   involve no hidden characters. It is a different mechanism from the 2025
+   reports of a literal narrow no-break space (U+202F) appearing in ChatGPT
+   output, which is a byte-level mark and is exactly the kind of thing
+   markcheck is built to find.
 
-A CLEAN result means "no hidden characters," not "not AI-generated" and not
-"unwatermarked."
+A CLEAN result means "no hidden characters." It does not mean "not
+AI-generated" and it does not mean "unwatermarked."
 
 ## Install
 
-Requires Python 3.9 or newer. No dependencies. Runs anywhere CPython does:
-Linux, macOS, Windows, Android (Termux, Pydroid), and iOS (a-Shell,
-Pythonista).
+Requires Python 3.9 or newer. Nothing else.
 
 ```bash
-python3 markcheck.py FILE        # run directly
-pip install .                    # or install; provides a `markcheck` command
+pip install markcheck                                   # from PyPI
+pipx install markcheck                                  # isolated CLI install
+pip install git+https://github.com/MavProDev/markcheck  # straight from source
 ```
+
+No install at all: download `markcheck.py` and run it.
+
+```bash
+python3 markcheck.py FILE
+```
+
+Runs anywhere CPython does: Linux, macOS, Windows, Android (Termux, Pydroid),
+and iOS (a-Shell, Pythonista).
 
 ## Usage
 
@@ -172,6 +200,23 @@ list and summaries are limited. Pass `0` to either flag to disable it.
 Measured cost on ordinary text is roughly 3x the file size in memory and about
 0.2s per MB. Exit code `1` means "hidden characters found" (linter semantics:
 non-zero signals something to look at), the opposite of `grep`.
+
+## Browser version
+
+`web/index.html` is a single self-contained page: paste text, see what is
+hiding in it. It runs entirely in the browser, so no text is uploaded, stored,
+or logged. Useful for anyone who does not live in a terminal, including
+students, teachers, editors, and hiring teams.
+
+The page is generated from `markcheck.py` by `tools/build_web.py`, never
+edited by hand, and `tools/check_parity.py` proves the two implementations
+agree across 1519 cases on every hit, position, name, note, and cleaned
+output. CI fails if the committed page drifts from the module.
+
+```bash
+python3 tools/build_web.py     # regenerate web/index.html
+python3 tools/check_parity.py  # prove it matches markcheck.py (needs Node)
+```
 
 ## Tests
 

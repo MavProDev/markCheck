@@ -15,6 +15,23 @@ from contextlib import redirect_stdout
 import markcheck as m
 
 ALL = set(m.CATEGORIES)
+
+
+def run_cli(args, stdin_text="", cwd=None):
+    """Invoke the CLI with UTF-8 bytes on every platform.
+
+    subprocess text mode encodes using the locale codec, which on Windows is
+    typically cp1252 and cannot represent a zero-width space. Passing bytes
+    and decoding explicitly keeps the test meaning the same everywhere.
+    """
+    proc = subprocess.run(
+        [sys.executable, SCRIPT, *args],
+        input=stdin_text.encode("utf-8"), capture_output=True, cwd=cwd)
+    return (proc.returncode,
+            proc.stdout.decode("utf-8", "replace"),
+            proc.stderr.decode("utf-8", "replace"))
+
+
 SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                       "markcheck.py")
 
@@ -250,11 +267,10 @@ class TestStdinDashHandling(unittest.TestCase):
         # regression: _do_strip once treated "-" as a filename and wrote a
         # file literally named "-.clean" into the working directory
         with tempfile.TemporaryDirectory() as d:
-            r = subprocess.run(
-                [sys.executable, SCRIPT, "-", "--strip", "--stdout"],
-                input="a\u200bb", capture_output=True, text=True, cwd=d)
+            code, out, _ = run_cli(["-", "--strip", "--stdout"],
+                                   "a\u200bb", cwd=d)
             self.assertEqual(os.listdir(d), [])
-            self.assertIn("ab", r.stdout)
+            self.assertIn("ab", out)
 
     def test_stdout_requires_strip(self):
         with redirect_stdout(io.StringIO()):
@@ -336,41 +352,65 @@ class TestEncodingRoundTrip(unittest.TestCase):
 
     def test_json_reports_encoding(self):
         import json
-        r = subprocess.run([sys.executable, SCRIPT, "--json"],
-                           input="a\u200bb", capture_output=True, text=True)
+        _, out, _ = run_cli(["--json"], "a\u200bb")
         self.assertEqual(
-            json.loads(r.stdout)["results"][0]["encoding"], "utf-8")
+            json.loads(out)["results"][0]["encoding"], "utf-8")
+
+
+class TestStdoutSurfaces(unittest.TestCase):
+    def test_strip_stdout_without_a_binary_layer(self):
+        # regression: writing to sys.stdout.buffer assumed a real file object,
+        # but redirect_stdout, notebooks, and embedding all replace stdout
+        # with an object that has no .buffer
+        class FakeStdin:
+            buffer = io.BytesIO("a\u200bb".encode("utf-8"))
+
+            def isatty(self):
+                return False
+
+        real_stdin = sys.stdin
+        sys.stdin = FakeStdin()
+        try:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                code = m.main(["-", "--strip", "--stdout"])
+        finally:
+            sys.stdin = real_stdin
+        self.assertEqual(code, 1)
+        self.assertIn("ab", buf.getvalue())
 
 
 class TestSubprocessCLI(unittest.TestCase):
     """Exercise the real `python3 markcheck.py ...` entry, argparse and all."""
-    def run_cli(self, args, **kw):
-        return subprocess.run([sys.executable, SCRIPT, *args],
-                              capture_output=True, text=True, **kw)
-
     def test_version(self):
-        r = self.run_cli(["--version"])
-        self.assertEqual(r.returncode, 0)
-        self.assertIn("markcheck", r.stdout)
+        code, out, _ = run_cli(["--version"])
+        self.assertEqual(code, 0)
+        self.assertIn("markcheck", out)
 
     def test_stdin_pipe(self):
-        r = self.run_cli([], input="a\u200bb")
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("hits: 1", r.stdout)
+        code, out, _ = run_cli([], "a\u200bb")
+        self.assertEqual(code, 1)
+        self.assertIn("hits: 1", out)
 
     def test_clean_stdin_exit_zero(self):
-        r = self.run_cli([], input="totally clean")
-        self.assertEqual(r.returncode, 0)
+        self.assertEqual(run_cli([], "totally clean")[0], 0)
 
     def test_dash_reads_stdin(self):
-        r = self.run_cli(["-"], input="a\u200bb")
-        self.assertEqual(r.returncode, 1)
+        self.assertEqual(run_cli(["-"], "a\u200bb")[0], 1)
 
     def test_json_is_valid(self):
         import json
-        r = self.run_cli(["--json"], input="a\u200bb")
-        data = json.loads(r.stdout)
+        _, out, _ = run_cli(["--json"], "a\u200bb")
+        data = json.loads(out)
         self.assertEqual(data["results"][0]["hits"][0]["codepoint"], 0x200B)
+
+    def test_stdout_strip_survives_non_ascii(self):
+        # regression: cleaned text used to go through the locale text layer,
+        # which raises UnicodeEncodeError on a cp1252 Windows console
+        code, out, err = run_cli(["-", "--strip", "--stdout"],
+                                 "caf\u00e9\u200b \u4e2d\u6587")
+        self.assertNotIn("Traceback", err)
+        self.assertIn("caf\u00e9", out)
 
     @unittest.skipUnless(os.name == "posix", "needs the coreutils `head`")
     def test_broken_pipe_no_traceback(self):

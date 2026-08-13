@@ -28,7 +28,7 @@ import tempfile
 import unicodedata
 from collections import Counter, namedtuple
 
-__version__ = "1.5.0"
+__version__ = "1.5.1"
 
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024  # 100 MB
 DEFAULT_MAX_HITS = 200_000
@@ -434,9 +434,18 @@ def _do_strip(path, text, cleaned, args, changed, encoding="utf-8"):
     """
     if path is None:
         if args.stdout:
-            # stdout is a text stream in the terminal's encoding, so the
-            # cleaned text goes out as text, not re-encoded bytes.
-            sys.stdout.write(cleaned)
+            # Prefer the binary layer: a Windows console defaults to a locale
+            # codec such as cp1252, which cannot represent most of Unicode and
+            # would raise UnicodeEncodeError on ordinary input. sys.stdout is
+            # not always a real file though (redirect_stdout, notebooks, and
+            # embedding all replace it), so fall back to a text write.
+            stream = getattr(sys.stdout, "buffer", None)
+            if stream is None:
+                sys.stdout.write(cleaned)
+            else:
+                sys.stdout.flush()
+                stream.write(cleaned.encode(encoding))
+                stream.flush()
             return None
         print(f"  stdin: changed {changed}; use --stdout to emit the cleaned "
               f"text", file=sys.stderr)
@@ -549,7 +558,23 @@ def main(argv=None):
     return 1 if any_hits else 0
 
 
+def _relax_stdio_errors():
+    """Never crash on a character the console encoding cannot represent.
+
+    A Windows console commonly uses a locale codec such as cp1252. Printing a
+    filename (or any text) outside that codec would raise UnicodeEncodeError
+    and take down the run. Substituting an escape is the right trade for a
+    reporting tool: the output degrades, the scan still completes.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="backslashreplace")
+        except (AttributeError, OSError, ValueError):
+            pass
+
+
 def cli():
+    _relax_stdio_errors()
     try:
         return main()
     except BrokenPipeError:

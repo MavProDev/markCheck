@@ -92,6 +92,12 @@ one backup). Pass `--no-backup` to opt out. All writes are atomic: markcheck
 writes a temp file and renames it into place, so an interrupted run cannot
 leave a half-written file.
 
+On Windows, the console often uses a locale codec such as cp1252 that cannot
+represent most of Unicode. markcheck writes cleaned `--stdout` text as bytes
+in the source encoding rather than through that layer, and substitutes an
+escape for report text the console cannot render, so a filename or a document
+outside the console codec degrades the display instead of ending the run.
+
 `--in-place` follows a symlink to the real file rather than replacing the
 link with a regular file. `--stdout` applies to stdin only; for files, use
 `--strip` for a clean copy or `--strip --in-place`.

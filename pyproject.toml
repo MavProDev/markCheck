@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "markcheck"
+dynamic = ["version"]
+description = "Scan text for hidden and invisible Unicode characters (watermarks, steganography, Trojan-Source controls)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["unicode", "watermark", "zero-width", "steganography", "security", "trojan-source"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Text Processing",
+  "Topic :: Security",
+]
+
+[project.urls]
+Homepage = "https://github.com/MavProDev/markcheck"
+Issues = "https://github.com/MavProDev/markcheck/issues"
+
+[project.scripts]
+markcheck = "markcheck:cli"
+
+[tool.setuptools]
+py-modules = ["markcheck"]
+
+[tool.setuptools.dynamic]
+version = { attr = "markcheck.__version__" }

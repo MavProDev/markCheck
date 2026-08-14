@@ -4,6 +4,7 @@ Covers the pure functions, the main() entry, real subprocess CLI invocation,
 encoding edge cases, --strip safety, and a randomized round-trip fuzzer.
 """
 import io
+import json
 import os
 import random
 import subprocess
@@ -69,7 +70,9 @@ class TestClassify(unittest.TestCase):
 
 class TestScan(unittest.TestCase):
     def test_finds_one_of_each_category(self):
-        text = "a\u200bb\u00adc\u202ed\ufe0fe\U000e0041f\u202fg"
+        # U+2065 is a reserved default-ignorable: in scope only when the
+        # opt-in category is enabled, which ALL does here.
+        text = "a\u200bb\u00adc\u202ed\ufe0fe\U000e0041f\u202fg\u2065h"
         self.assertEqual({h["category"] for h in m.scan(text, ALL).hits}, ALL)
 
     def test_line_and_column(self):
@@ -606,6 +609,229 @@ class TestEndiannessPreserved(unittest.TestCase):
         cleaned, backup = self._strip_in_place(raw)
         self.assertTrue(cleaned.startswith(b"\x00\x00\xfe\xff"))
         self.assertEqual(backup, raw)
+
+
+class TestMongolianFvsNames(unittest.TestCase):
+    """P0: names must not depend on the interpreter's Unicode version.
+
+    U+180F arrived in Unicode 14.0, so unicodedata.name() misses it on Python
+    3.9/3.10 (Unicode 13.0) and would report a generic fallback there while the
+    generated browser build reports the real name.
+    """
+
+    def test_all_four_selectors_named_exactly(self):
+        expected = {
+            0x180B: "MONGOLIAN FREE VARIATION SELECTOR ONE",
+            0x180C: "MONGOLIAN FREE VARIATION SELECTOR TWO",
+            0x180D: "MONGOLIAN FREE VARIATION SELECTOR THREE",
+            0x180F: "MONGOLIAN FREE VARIATION SELECTOR FOUR",
+        }
+        for cp, name in expected.items():
+            got_name, category = m.classify(cp)
+            self.assertEqual(got_name, name, f"U+{cp:04X}")
+            self.assertEqual(category, "variation-selector")
+
+    def test_names_do_not_come_from_unicodedata(self):
+        # Guards the fix itself: if someone reverts to unicodedata.name, this
+        # still passes on a new Python but the table is what must be present.
+        self.assertIn(0x180F, m._MONGOLIAN_FVS)
+
+
+class TestSeverity(unittest.TestCase):
+    """G-01: the suspicion model."""
+
+    def test_annotated_hits_are_info(self):
+        for text in ("﻿hi", "\U0001f468‍\U0001f469", "10 000"):
+            hit = m.scan(text, ALL).hits[0]
+            self.assertTrue(hit["note"], text)
+            self.assertEqual(hit["severity"], "info", text)
+
+    def test_reordering_bidi_is_high(self):
+        for cp in (0x202D, 0x202E, 0x2066, 0x2069):
+            hit = m.scan("a" + chr(cp) + "b", ALL).hits[0]
+            self.assertEqual(hit["severity"], "high", hex(cp))
+
+    def test_bidi_marks_are_not_high(self):
+        # A plain direction mark does not reorder anything on its own.
+        hit = m.scan("a‎b", ALL).hits[0]
+        self.assertEqual(hit["severity"], "medium")
+
+    def test_tag_characters_are_high(self):
+        hit = m.scan("a\U000e0041b", ALL).hits[0]
+        self.assertEqual(hit["severity"], "high")
+
+    def test_unexplained_zero_width_is_medium(self):
+        self.assertEqual(m.scan("a​b", ALL).hits[0]["severity"], "medium")
+
+    def test_plain_nonstandard_space_is_low(self):
+        self.assertEqual(m.scan("a b", ALL).hits[0]["severity"], "low")
+
+    def test_min_severity_filters_scope(self):
+        text = "﻿a b​c‮d"
+        self.assertEqual(m.scan(text, ALL).total, 4)
+        self.assertEqual(m.scan(text, ALL, 0, "low").total, 3)
+        self.assertEqual(m.scan(text, ALL, 0, "medium").total, 2)
+        self.assertEqual(m.scan(text, ALL, 0, "high").total, 1)
+
+    def test_strip_respects_min_severity(self):
+        # The emoji ZWJ is info, so a medium+ strip must leave it intact.
+        text = "\U0001f468‍\U0001f469 and ​"
+        self.assertEqual(m.strip_hidden(text, ALL, "medium"),
+                         "\U0001f468‍\U0001f469 and ")
+        self.assertEqual(m.strip_hidden(text, ALL),
+                         "\U0001f468\U0001f469 and ")
+
+    def test_suspicious_only_exits_clean_on_legitimate_text(self):
+        code, out, _ = run_cli(["-", "--suspicious-only"],
+                               "\U0001f468‍\U0001f469 café")
+        self.assertEqual(code, 0)
+        self.assertIn("CLEAN", out)
+
+    def test_severity_in_json(self):
+        code, out, _ = run_cli(["--json"], "a​b")
+        payload = json.loads(out)
+        self.assertEqual(payload["min_severity"], "info")
+        self.assertEqual(payload["results"][0]["hits"][0]["severity"],
+                         "medium")
+
+
+class TestDefaultIgnorableOracle(unittest.TestCase):
+    """F-10/G-03: an independent specification oracle for the taxonomy.
+
+    Parity proves Python and JS agree; it cannot prove the shared taxonomy is
+    complete. This checks the curated set against frozen UCD data instead, so a
+    future omission like U+180F fails here rather than passing silently.
+    """
+
+    # Default-ignorable code points deliberately outside the curated
+    # taxonomy: reserved ranges and specialist formats that would add noise
+    # without adding signal. Reachable via --include-default-ignorables.
+    EXPECTED_GAPS = (
+        {0x2065}                        # reserved
+        | set(range(0xFFF0, 0xFFF9))    # reserved
+        | set(range(0x1BCA0, 0x1BCA4))  # shorthand format controls
+        | set(range(0x1D173, 0x1D17B))  # musical beam/phrase controls
+        | {0xE0000}                     # reserved
+        | set(range(0xE0002, 0xE0020))  # reserved tag range
+        | set(range(0xE0080, 0xE0100))  # reserved tag range
+        | set(range(0xE01F0, 0xE1000))  # reserved variation-selector range
+    )
+
+    def _all_default_ignorable(self):
+        for lo, hi in m.DEFAULT_IGNORABLE:
+            for cp in range(lo, hi + 1):
+                yield cp
+
+    def test_ranges_are_sorted_and_disjoint(self):
+        prev_hi = -1
+        for lo, hi in m.DEFAULT_IGNORABLE:
+            self.assertLessEqual(lo, hi)
+            self.assertGreater(lo, prev_hi, f"overlap at U+{lo:04X}")
+            self.assertLess(hi, 0x110000)
+            prev_hi = hi
+
+    def test_curated_taxonomy_gaps_are_exactly_as_documented(self):
+        default = set(m.DEFAULT_CATEGORIES)
+        gaps = set()
+        for cp in self._all_default_ignorable():
+            info = m.classify(cp)
+            if info is None or info[1] not in default:
+                gaps.add(cp)
+        self.assertEqual(gaps, self.EXPECTED_GAPS)
+
+    def test_nothing_default_ignorable_is_invisible_to_the_tool(self):
+        for cp in self._all_default_ignorable():
+            self.assertIsNotNone(m.classify(cp), f"U+{cp:04X}")
+
+    def test_opt_in_category_is_off_by_default(self):
+        self.assertNotIn("default-ignorable", m.DEFAULT_CATEGORIES)
+        self.assertNotIn("default-ignorable",
+                         m.resolve_categories(None, ""))
+        self.assertIn("default-ignorable",
+                      m.resolve_categories(None, "",
+                                           include_default_ignorables=True))
+
+    def test_reserved_default_ignorable_needs_the_flag(self):
+        text = "a⁥b"
+        self.assertEqual(m.scan(text, set(m.DEFAULT_CATEGORIES)).total, 0)
+        self.assertEqual(m.scan(text, m.resolve_categories(
+            None, "", include_default_ignorables=True)).total, 1)
+
+
+class TestCleanOutputCollision(unittest.TestCase):
+    """F-13: an existing .clean output is not silently replaced."""
+
+    def test_refuses_then_force_overwrites(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "p.md")
+            with open(f, "w", encoding="utf-8") as fh:
+                fh.write("x​y")
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(m.main([f, "--strip"]), 0 or 1)
+            out = os.path.join(d, "p.clean.md")
+            with open(out, "w", encoding="utf-8") as fh:
+                fh.write("PRECIOUS")
+            with redirect_stdout(io.StringIO()):
+                code = m.main([f, "--strip"])
+            self.assertEqual(code, 2)
+            with open(out, encoding="utf-8") as fh:
+                self.assertEqual(fh.read(), "PRECIOUS")
+            with redirect_stdout(io.StringIO()):
+                m.main([f, "--strip", "--force"])
+            with open(out, encoding="utf-8") as fh:
+                self.assertEqual(fh.read(), "xy")
+
+    def test_force_requires_strip(self):
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(m.main(["x", "--force"]), 2)
+
+
+class TestBackupReservation(unittest.TestCase):
+    """F-14: the backup name is claimed atomically, not check-then-write."""
+
+    def test_existing_backup_still_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "p.txt")
+            with open(f, "w", encoding="utf-8") as fh:
+                fh.write("x​y")
+            with open(f + ".bak", "w", encoding="utf-8") as fh:
+                fh.write("PRECIOUS")
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(m.main([f, "--strip", "--in-place"]), 2)
+            with open(f + ".bak", encoding="utf-8") as fh:
+                self.assertEqual(fh.read(), "PRECIOUS")
+
+    def test_copy_bytes_exclusive_raises_on_existing(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "a")
+            dst = os.path.join(d, "b")
+            with open(src, "wb") as fh:
+                fh.write(b"data")
+            with open(dst, "wb") as fh:
+                fh.write(b"taken")
+            with self.assertRaises(FileExistsError):
+                m.copy_bytes(src, dst, exclusive=True)
+            with open(dst, "rb") as fh:
+                self.assertEqual(fh.read(), b"taken")
+
+
+class TestFlagValidation(unittest.TestCase):
+    """F-17: nonsensical flag states are rejected with a clear message."""
+
+    def test_in_place_on_stdin_rejected(self):
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(m.main(["-", "--strip", "--in-place"]), 2)
+            self.assertEqual(m.main(["--strip", "--in-place"]), 2)
+
+    def test_repeated_stdin_rejected(self):
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(m.main(["-", "-"]), 2)
+
+    def test_conflicting_severity_flags_rejected(self):
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(
+                m.main(["-", "--suspicious-only",
+                        "--min-severity", "high"]), 2)
 
 
 class TestBoundedFileRead(unittest.TestCase):

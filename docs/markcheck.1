@@ -1,0 +1,106 @@
+.TH MARKCHECK 1 "2026-08-14" "markcheck 2.0.0" "User Commands"
+.SH NAME
+markcheck \- scan text for hidden and invisible Unicode characters
+.SH SYNOPSIS
+.B markcheck
+[\fIOPTION\fR]... [\fIFILE\fR]...
+.SH DESCRIPTION
+Detects zero\-width characters, bidirectional controls, variation selectors, nonstandard whitespace, invisible format code points, and the Unicode Tags block: code points that render as nothing, or as an ordinary\-looking space, yet occupy distinct bytes. With no FILE, or when FILE is \-, read standard input.
+.PP
+markcheck inspects the byte stream, so it finds marks that ARE bytes. It does not detect statistical (token\-distribution) watermarks, and it does not read C2PA provenance metadata.
+.SH OPTIONS
+.TP
+\fB\-h, \-\-help\fR
+show this help message and exit
+.TP
+\fB\-\-strip\fR
+write a cleaned copy (FILE.clean.EXT) with hits removed
+.TP
+\fB\-\-in\-place\fR
+with \-\-strip, overwrite the original (writes a .bak backup unless \-\-no\-backup)
+.TP
+\fB\-\-no\-backup\fR
+with \-\-in\-place, skip the .bak backup
+.TP
+\fB\-\-stdout\fR
+with \-\-strip on stdin, write cleaned text to stdout
+.TP
+\fB\-\-json\fR
+emit JSON
+.TP
+\fB\-\-force\fR
+with \-\-strip, overwrite an existing FILE.clean.EXT
+.TP
+\fB\-\-only\fR CATS
+comma\-separated categories to scan (e.g. zero\-width,bidi)
+.TP
+\fB\-\-exclude\fR CATS
+comma\-separated categories to skip
+.TP
+\fB\-\-min\-severity\fR LEVEL
+report only hits at or above LEVEL (info, low, medium, high; default info). Narrows scope: \-\-strip and the exit code follow it
+.TP
+\fB\-\-suspicious\-only\fR
+shorthand for \-\-min\-severity medium: drop the annotated, likely\-legitimate hits
+.TP
+\fB\-\-include\-default\-ignorables\fR
+also scan every remaining Unicode default\-ignorable code point (noisy; for forensic use)
+.TP
+\fB\-\-max\-bytes\fR N
+refuse inputs larger than N bytes (default 104857600; 0 = unlimited)
+.TP
+\fB\-\-max\-hits\fR N
+cap stored hit records at N to bound memory (default 200000; 0 = unlimited)
+.TP
+\fB\-\-show\fR N
+max locations to list (default 20)
+.TP
+\fB\-\-list\-categories\fR
+print the taxonomy and exit
+.TP
+\fB\-\-version\fR
+show program's version number and exit
+.SH EXIT STATUS
+.TP
+.B 0
+no hidden characters were found
+.TP
+.B 1
+hidden characters were found
+.TP
+.B 2
+usage error, or a read or write failed
+.TP
+.B 130
+interrupted
+.TP
+.B 141
+terminated by SIGPIPE (POSIX)
+.SH CATEGORIES
+.TP
+\fBzero\-width\fR
+Zero\-advance invisibles (ZWSP, ZWJ, ZWNJ, word joiner, invisible math operators, BOM). ZWJ is also a valid emoji and Indic joiner; likely\-legitimate uses are annotated.
+.TP
+\fBinvisible\-format\fR
+Format and filler code points that render blank (soft hyphen, grapheme joiner, script fillers, interlinear annotation, deprecated format controls).
+.TP
+\fBbidi\fR
+Bidirectional controls. Valid in RTL scripts; the override and isolate members enable Trojan\-Source reordering.
+.TP
+\fBvariation\-selector\fR
+Variation selectors. Normally style glyphs; can carry hidden payloads.
+.TP
+\fBtag\fR
+Unicode Tags block. Invisible; used for text smuggling and prompt injection. Rare in ordinary prose.
+.TP
+\fBwhitespace\fR
+Nonstandard whitespace (NBSP, narrow no\-break space, en and em spaces, line and paragraph separators). Renders like a space but differs from ASCII space; the class behind the 2025 NNBSP fingerprint reports. Common in typeset and word\-processor text; \-\-exclude whitespace to skip.
+.TP
+\fBdefault\-ignorable\fR
+OPT\-IN. Every remaining Unicode Default_Ignorable_Code_Point not covered above, including reserved ranges. Off by default because it is noisy; enable with \-\-include\-default\-ignorables for forensic work.
+.SH SEVERITY
+Each hit is rated info, low, medium, high. Annotated, likely\-legitimate hits are info. Use \-\-min\-severity or \-\-suspicious\-only to narrow scope; the exit code and \-\-strip follow the same scope.
+.SH SEE ALSO
+c2patool(1), exiftool(1)
+.SH AUTHOR
+MavProDev.

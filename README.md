@@ -57,13 +57,14 @@ puts anything in the bytes, and that is the one markcheck handles.
 3. Statistical / token-distribution watermarks. These bias which ordinary
    words a model selects and add no hidden character, so nothing in the byte
    stream can reveal them. markcheck cannot detect this class, and neither can
-   any byte scanner. Rewriting the text in your own words removes it. The
-   watermark Anthropic began shipping in Claude models in August 2026 is this
-   kind: a statistical bias in token selection, confirmed by Anthropic to
-   involve no hidden characters. It is a different mechanism from the 2025
-   reports of a literal narrow no-break space (U+202F) appearing in ChatGPT
-   output, which is a byte-level mark and is exactly the kind of thing
-   markcheck is built to find.
+   any byte scanner. Rewriting the text in your own words removes it.
+
+A statistical watermark and a hidden-character mark are different mechanisms,
+and only the second leaves anything for a byte scanner to find. Where a vendor
+is reported to use one or the other, treat the specific claim as something to
+verify against that vendor's own documentation rather than against this README:
+attribution changes over time, and markcheck deliberately carries no vendor
+list. What it reports is a fact about the bytes in front of it.
 
 A CLEAN result means "no hidden characters." It does not mean "not
 AI-generated" and it does not mean "unwatermarked."
@@ -99,12 +100,18 @@ cat FILE | markcheck --strip --stdout     # clean a stream to stdout
 markcheck FILE --json                     # machine-readable output
 markcheck FILE --only zero-width,bidi     # restrict to categories
 markcheck FILE --exclude whitespace       # e.g. for typeset or French text
+markcheck FILE --suspicious-only          # drop the likely-legitimate hits
+markcheck FILE --min-severity high        # only the reordering/smuggling ones
+markcheck FILE --include-default-ignorables  # forensic: every ignorable point
+markcheck FILE --strip --force            # overwrite an existing .clean file
 markcheck FILE --max-bytes 0         # disable the 100 MB size guard
 markcheck FILE --max-hits 0          # disable the hit-count cap
 markcheck --list-categories
 ```
 
 Exit codes: `0` clean, `1` hidden characters found, `2` usage or I/O error.
+On POSIX, a closed pipe (`markcheck big.md | head`) terminates with the
+conventional `141` rather than reporting success.
 This suits a pre-commit hook or CI step:
 
 ```bash
@@ -114,12 +121,19 @@ git diff --cached --name-only --diff-filter=ACM | grep '\.md$' \
 
 ### Editing files safely
 
-`--strip` never touches the original by default; it writes `FILE.clean.EXT`.
+`--strip` never touches the original by default; it writes `FILE.clean.EXT`, and
+refuses if that file already exists — pass `--force` to overwrite it.
 `--in-place` overwrites the original but first writes a `FILE.bak` backup, and
 refuses to run if a `.bak` already exists (so a second run cannot destroy your
-one backup). Pass `--no-backup` to opt out. All writes are atomic: markcheck
-writes a temp file and renames it into place, so an interrupted run cannot
-leave a half-written file.
+one backup). The backup name is claimed with an atomic exclusive create, so two
+concurrent runs cannot both decide the backup is free. `--force` deliberately
+does *not* override this one: move the `.bak` or pass `--no-backup`. All writes
+are atomic: markcheck writes a temp file, fsyncs it, renames it into place, and
+fsyncs the directory, so an interrupted run cannot leave a half-written file.
+
+Atomic replacement preserves permission bits. It does **not** preserve
+ownership, timestamps, ACLs, or extended attributes; if you rely on those, clean
+to a copy rather than in place.
 
 On Windows, the console often uses a locale codec such as cp1252 that cannot
 represent most of Unicode. markcheck writes cleaned `--stdout` text as bytes
@@ -161,12 +175,45 @@ UTF-8.
 | `variation-selector` | VS1 to VS16, the supplement, Mongolian FVS | normally style glyphs; abusable as payload carriers |
 | `tag` | Unicode Tags block (U+E0000 to U+E007F) | invisible; text smuggling and prompt injection; rare in prose |
 | `whitespace` | NBSP, NNBSP, en/em/thin/hair spaces, line and paragraph separators, ideographic space | render like a space but differ from U+0020; the class behind the 2025 NNBSP reports |
+| `default-ignorable` | every remaining Unicode default-ignorable code point, including reserved ranges | **opt-in**, off by default; enable with `--include-default-ignorables` |
 
-On the narrow no-break space: in 2025 researchers reported U+202F appearing
-in output from some ChatGPT models, and OpenAI attributed it to a training
-artifact rather than a deliberate watermark. markcheck takes no position on
-intent. It reports that the character is present, which is a fact about the
-bytes, and leaves attribution to you.
+On the narrow no-break space: in 2025 there were widely-circulated reports of
+U+202F appearing in output from some ChatGPT models, and discussion of whether
+it was a deliberate watermark or an artifact of training. markcheck takes no
+position on intent, and does not restate any vendor's explanation as settled
+fact. It reports that the character is present, which is a fact about the bytes,
+and leaves attribution to you.
+
+### Severity
+
+Every hit is rated, so you can separate a watermark from an emoji:
+
+| severity | what lands here |
+|----------|-----------------|
+| `info` | annotated, likely-legitimate uses: BOM at file start, emoji ZWJ, presentation selectors, French spacing, digit grouping |
+| `low` | ordinary nonstandard whitespace, and the opt-in default-ignorable set |
+| `medium` | unexplained zero-width, invisible-format, and variation selectors; bidi direction marks |
+| `high` | bidi embeddings, overrides, and isolates (Trojan-Source), and the Unicode Tags block (text smuggling) |
+
+`--suspicious-only` is shorthand for `--min-severity medium`. The filter narrows
+*scope*, not just display: the exit code and `--strip` follow it, so
+`--suspicious-only --strip` is a conservative cleanup that removes what was
+reported and leaves the emoji joiners alone.
+
+```bash
+markcheck essay.md --suspicious-only            # skip the benign annotations
+markcheck *.md --min-severity high              # CI: only the attack classes
+markcheck notes.md --suspicious-only --strip    # clean without breaking emoji
+```
+
+### Forensic mode
+
+`--include-default-ignorables` adds a seventh, opt-in category covering every
+remaining Unicode `Default_Ignorable_Code_Point`, including reserved ranges. It
+is off by default because it is noisy. The range table is frozen at a pinned
+Unicode version inside markcheck rather than read from the running Python, so it
+also serves as the specification oracle the curated taxonomy is tested against —
+that is what catches an omission the Python/JS parity check cannot see.
 
 markcheck reports every hit but annotates the common false positives: a
 byte-order mark at the start of a file, a ZERO WIDTH JOINER between two emoji,
@@ -202,9 +249,21 @@ pathological file that is mostly hidden characters cannot exhaust RAM. When the
 hit list is capped, the reported total is still exact; only the per-location
 list and summaries are limited. Pass `0` to either flag to disable it.
 
-Measured cost on ordinary text is roughly 3x the file size in memory and about
-0.2s per MB. Exit code `1` means "hidden characters found" (linter semantics:
-non-zero signals something to look at), the opposite of `grep`.
+On ordinary prose with sparse hits, peak scan memory measures about **3.4x** the
+input size — but that ratio is not a bound. It is dominated by the stored hit
+records, so a pathological file that is mostly hidden characters reaches ~140x
+with the cap disabled; `--max-hits` (default 200,000), not the input size, is
+what bounds the worst case. Throughput is hardware-dependent and was roughly
+0.7–2 MB/s on the modest container used for development.
+
+Reproduce both on your own machine rather than taking these numbers on faith:
+
+```bash
+python3 tools/benchmark.py --mb 4
+```
+
+Exit code `1` means "hidden characters found" (linter semantics: non-zero
+signals something to look at), the opposite of `grep`.
 
 ## Browser version
 
@@ -215,12 +274,34 @@ students, teachers, editors, and hiring teams.
 
 The page is generated from `markcheck.py` by `tools/build_web.py`, never
 edited by hand, and `tools/check_parity.py` proves the two implementations
-agree across 1521 cases on every hit, position, name, note, and cleaned
-output. CI fails if the committed page drifts from the module.
+agree across 1530 cases on every hit, position, name, note, severity, and
+cleaned output. CI fails if the committed page drifts from the module.
+
+The page ships a restrictive Content-Security-Policy. `connect-src 'none'` is
+what technically backs the "nothing is uploaded" claim: the page cannot make a
+network request even if it wanted to. One caveat worth stating plainly:
+`frame-ancestors` is **ignored** when a policy is delivered in a `<meta>` tag,
+so it is not included there. If you host this page and want clickjacking
+protection, send it as an HTTP response header:
+
+```
+Content-Security-Policy: frame-ancestors 'none'
+```
 
 ```bash
 python3 tools/build_web.py     # regenerate web/index.html
 python3 tools/check_parity.py  # prove it matches markcheck.py (needs Node)
+```
+
+## Man page and shell completion
+
+Both are generated from the argparse parser by `tools/build_docs.py`, so a new
+flag cannot ship with a stale man page. CI regenerates and diffs them.
+
+```bash
+man -l docs/markcheck.1                     # read without installing
+source completions/markcheck.bash           # bash
+cp completions/markcheck.zsh ~/.zfunc/_markcheck   # zsh (with ~/.zfunc in fpath)
 ```
 
 ## Tests

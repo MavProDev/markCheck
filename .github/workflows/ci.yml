@@ -41,4 +41,9 @@ jobs:
       - name: Committed web build is current
         run: |
           python tools/build_web.py
-          git diff --exit-code web/index.html
+          git diff --exit-code web/
+
+      - name: Committed man page and completions are current
+        run: |
+          python tools/build_docs.py
+          git diff --exit-code docs completions

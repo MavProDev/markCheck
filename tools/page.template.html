@@ -3,141 +3,504 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- frame-ancestors is deliberately absent: the CSP spec ignores it when the
+     policy arrives in a meta element, so listing it here would imply a
+     clickjacking protection that does not exist. It is sent as an HTTP response
+     header instead (see web/vercel.json). connect-src 'none' is honoured in meta
+     and is what backs the "nothing is uploaded" claim. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none';
   script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none';
-  form-action 'none'; connect-src 'none'; frame-ancestors 'none'">
+  form-action 'none'; connect-src 'none'">
 <meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
 <title>markcheck - find hidden characters in text</title>
 <meta name="description" content="Paste text and see the invisible Unicode
 characters hiding in it. Runs entirely in your browser. Nothing is uploaded.">
 <style>
+  /* Light is the base palette; dark overrides only the tokens. Both are also
+     reachable through [data-theme] so the manual toggle wins in either
+     direction, including against the OS preference. */
   :root {
-    --bg: #0d1117; --panel: #161b22; --line: #30363d; --ink: #e6edf3;
-    --dim: #8b949e; --accent: #d29922; --ok: #3fb950; --hit: #f85149;
-    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --bg: #f2f2f7;
+    --bg-tint-a: #d8e6ff;
+    --bg-tint-b: #ffe4d6;
+    --bg-tint-c: #e6dcff;
+    --glass: rgba(255, 255, 255, 0.66);
+    --glass-solid: #ffffff;
+    --glass-strong: rgba(255, 255, 255, 0.82);
+    --edge: rgba(0, 0, 0, 0.09);
+    --edge-lit: rgba(255, 255, 255, 0.9);
+    --ink: #1d1d1f;
+    --dim: #6e6e73;
+    --faint: rgba(0, 0, 0, 0.045);
+    --accent: #0071e3;
+    --accent-ink: #ffffff;
+    --ok: #1d8a4e;
+    --info: #6e6e73;
+    --low: #0a7ea4;
+    --med: #b26a00;
+    --high: #c9342b;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.07);
+    --shadow-lg: 0 2px 6px rgba(0,0,0,.06), 0 20px 50px rgba(0,0,0,.12);
+    --radius: 18px;
+    --radius-sm: 12px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto,
+            Helvetica, Arial, sans-serif;
+    /* An overshoot curve reads as "physical" without a physics engine. */
+    --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
   }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #000000;
+      --bg-tint-a: #0a2f6b;
+      --bg-tint-b: #5c2a00;
+      --bg-tint-c: #35206b;
+      --glass: rgba(28, 28, 30, 0.62);
+      --glass-solid: #1c1c1e;
+      --glass-strong: rgba(38, 38, 41, 0.86);
+      --edge: rgba(255, 255, 255, 0.11);
+      --edge-lit: rgba(255, 255, 255, 0.14);
+      --ink: #f5f5f7;
+      --dim: #98989d;
+      --faint: rgba(255, 255, 255, 0.06);
+      --accent: #0a84ff;
+      --ok: #30d158;
+      --info: #98989d;
+      --low: #64d2ff;
+      --med: #ff9f0a;
+      --high: #ff453a;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
+      --shadow-lg: 0 2px 6px rgba(0,0,0,.5), 0 20px 50px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #000000;
+    --bg-tint-a: #0a2f6b;
+    --bg-tint-b: #5c2a00;
+    --bg-tint-c: #35206b;
+    --glass: rgba(28, 28, 30, 0.62);
+    --glass-solid: #1c1c1e;
+    --glass-strong: rgba(38, 38, 41, 0.86);
+    --edge: rgba(255, 255, 255, 0.11);
+    --edge-lit: rgba(255, 255, 255, 0.14);
+    --ink: #f5f5f7;
+    --dim: #98989d;
+    --faint: rgba(255, 255, 255, 0.06);
+    --accent: #0a84ff;
+    --ok: #30d158;
+    --info: #98989d;
+    --low: #64d2ff;
+    --med: #ff9f0a;
+    --high: #ff453a;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
+    --shadow-lg: 0 2px 6px rgba(0,0,0,.5), 0 20px 50px rgba(0,0,0,.6);
+  }
+
   * { box-sizing: border-box; }
+  /* The nav is sticky, so anything scrolled to must stop clear of it or it
+     lands underneath and cannot be clicked. */
+  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 76px; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
-    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          Helvetica, Arial, sans-serif;
-    padding: 24px 16px 64px;
+    font: 17px/1.6 var(--sans);
+    letter-spacing: -0.011em;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    overflow-x: hidden;
   }
-  main { max-width: 820px; margin: 0 auto; }
-  h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -0.02em; }
-  .sub { color: var(--dim); margin: 0 0 20px; }
-  .privacy {
-    border: 1px solid var(--line); border-left: 3px solid var(--ok);
-    background: var(--panel); padding: 10px 14px; border-radius: 6px;
-    font-size: 14px; color: var(--dim); margin-bottom: 20px;
+
+  /* Depth behind the glass. Fixed and pointer-events:none so it never
+     interferes with selection or hit-testing. */
+  .aura {
+    position: fixed; inset: -20vmax; z-index: -1; pointer-events: none;
+    filter: blur(90px); opacity: 0.55;
+  }
+  .aura i {
+    position: absolute; display: block; border-radius: 50%;
+    width: 46vmax; height: 46vmax;
+  }
+  .aura i:nth-child(1) { background: var(--bg-tint-a); top: 2%; left: 4%;
+    animation: drift1 34s var(--ease) infinite alternate; }
+  .aura i:nth-child(2) { background: var(--bg-tint-b); top: 26%; right: 2%;
+    animation: drift2 42s var(--ease) infinite alternate; }
+  .aura i:nth-child(3) { background: var(--bg-tint-c); bottom: 2%; left: 28%;
+    animation: drift3 38s var(--ease) infinite alternate; }
+  @keyframes drift1 { to { transform: translate3d(8vmax, 6vmax, 0) scale(1.15); } }
+  @keyframes drift2 { to { transform: translate3d(-9vmax, 8vmax, 0) scale(1.1); } }
+  @keyframes drift3 { to { transform: translate3d(6vmax, -7vmax, 0) scale(1.18); } }
+
+  /* The glass surface. Applied only to a handful of large containers: a
+     backdrop-filter per table row or preview span would be ruinous on a big
+     paste, where the preview alone can emit thousands of nodes. */
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid var(--edge);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow), inset 0 1px 0 var(--edge-lit);
+  }
+  @supports not ((backdrop-filter: blur(1px)) or
+                 (-webkit-backdrop-filter: blur(1px))) {
+    .glass { background: var(--glass-solid); }
+  }
+
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; margin: 0 0 8px;
+    border-radius: 0; border-width: 0 0 1px;
+    background: var(--glass-strong);
+  }
+  nav .wordmark {
+    font-weight: 700; font-size: 17px; letter-spacing: -0.02em;
+    display: flex; align-items: center; gap: 8px; margin-right: auto;
+  }
+  nav .dot {
+    width: 10px; height: 10px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  nav a, .ghost {
+    color: var(--ink); text-decoration: none; font-size: 14px;
+    padding: 7px 12px; border-radius: 999px; border: 1px solid transparent;
+    background: transparent; cursor: pointer; font-family: inherit;
+    transition: background .25s var(--ease), border-color .25s var(--ease),
+                transform .25s var(--spring);
+  }
+  nav a:hover, .ghost:hover { background: var(--faint); border-color: var(--edge); }
+  nav a:active, .ghost:active { transform: scale(0.96); }
+  .kbd {
+    font: 11px/1 var(--mono); padding: 4px 6px; border-radius: 6px;
+    border: 1px solid var(--edge); background: var(--faint); color: var(--dim);
+  }
+
+  main { max-width: 880px; margin: 0 auto; padding: 22px 16px 80px; }
+
+  header.hero { text-align: center; padding: 26px 8px 30px; }
+  header.hero h1 {
+    font-size: clamp(34px, 7vw, 54px); line-height: 1.05; margin: 0 0 12px;
+    letter-spacing: -0.035em; font-weight: 700;
+  }
+  header.hero p { color: var(--dim); margin: 0 auto; max-width: 46ch;
+    font-size: clamp(16px, 2.2vw, 19px); }
+  .badge {
+    display: inline-flex; align-items: center; gap: 7px; margin-bottom: 18px;
+    padding: 6px 13px; border-radius: 999px; font-size: 13px; color: var(--dim);
+    border: 1px solid var(--edge); background: var(--glass);
+  }
+  .badge b { color: var(--ok); font-weight: 600; }
+
+  .card { padding: 18px; margin: 16px 0; }
+  .card h2 { font-size: 15px; margin: 0 0 12px; letter-spacing: -0.01em; }
+
+  .drop { position: relative; }
+  .drop.over::after {
+    content: "Drop a text file to scan it here";
+    position: absolute; inset: 0; display: grid; place-items: center;
+    border-radius: var(--radius-sm); font-size: 15px; font-weight: 600;
+    border: 2px dashed var(--accent); color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--glass-solid));
   }
   textarea {
-    width: 100%; min-height: 180px; padding: 12px; border-radius: 8px;
-    border: 1px solid var(--line); background: var(--panel);
-    color: var(--ink); font: 14px/1.6 var(--mono); resize: vertical;
+    width: 100%; min-height: 190px; padding: 14px; border-radius: var(--radius-sm);
+    border: 1px solid var(--edge); background: var(--faint);
+    color: var(--ink); font: 14px/1.7 var(--mono); resize: vertical;
+    transition: border-color .25s var(--ease), box-shadow .25s var(--ease);
   }
-  textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  textarea:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  .row { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 13px;
+         align-items: center; }
   button {
-    font: inherit; font-size: 15px; padding: 9px 16px; border-radius: 6px;
-    border: 1px solid var(--line); background: var(--panel);
-    color: var(--ink); cursor: pointer;
+    font: 15px/1 var(--sans); font-weight: 500; padding: 11px 17px;
+    border-radius: 999px; border: 1px solid var(--edge);
+    background: var(--glass-solid); color: var(--ink); cursor: pointer;
+    transition: transform .28s var(--spring), box-shadow .28s var(--ease),
+                background .2s var(--ease), opacity .2s var(--ease);
   }
-  button.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
-  button:hover { border-color: var(--dim); }
+  button:hover:not([disabled]) { transform: translateY(-1px);
+    box-shadow: var(--shadow); }
+  button:active:not([disabled]) { transform: scale(0.96); }
+  button:focus-visible, textarea:focus-visible, a:focus-visible,
+  .ghost:focus-visible, .toggle:focus-visible,
+  /* The toggle's real checkbox is visually hidden, so focus lands on an
+     invisible element. Promote the ring to the label the visitor can see. */
+  .toggle:has(input:focus-visible) {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  button.primary {
+    background: var(--accent); border-color: transparent; color: var(--accent-ink);
+    font-weight: 600;
+  }
+  button[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+  .toggle {
+    display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+    font-size: 14px; color: var(--dim); padding: 8px 13px; border-radius: 999px;
+    border: 1px solid var(--edge); background: var(--glass-solid);
+    transition: color .2s var(--ease), border-color .2s var(--ease);
+  }
+  .toggle input { position: absolute; opacity: 0; pointer-events: none; }
+  .toggle .track {
+    width: 34px; height: 20px; border-radius: 999px; background: var(--faint);
+    border: 1px solid var(--edge); position: relative;
+    transition: background .3s var(--ease);
+  }
+  .toggle .track::after {
+    content: ""; position: absolute; top: 1px; left: 1px;
+    width: 16px; height: 16px; border-radius: 50%; background: var(--glass-solid);
+    box-shadow: 0 1px 3px rgba(0,0,0,.3);
+    transition: transform .32s var(--spring);
+  }
+  .toggle input:checked + .track { background: var(--accent); }
+  .toggle input:checked + .track::after { transform: translateX(14px); }
+  .toggle:has(input:checked) { color: var(--ink); border-color: var(--accent); }
+
   .verdict {
-    margin: 18px 0 10px; padding: 14px 16px; border-radius: 8px;
-    border: 1px solid var(--line); background: var(--panel); font-size: 17px;
+    /* Top-aligned, not centred: the lede grows taller than the number once the
+       severity bar and chips are in it, and centring floats the figure away
+       from the sentence it belongs to. */
+    display: flex; align-items: flex-start; gap: 16px; padding: 18px 20px;
+    border-left: 3px solid var(--edge);
   }
-  .verdict.clean { border-left: 3px solid var(--ok); }
-  .verdict.found { border-left: 3px solid var(--hit); }
-  .count { font-weight: 700; }
+  .verdict.clean { border-left-color: var(--ok); }
+  .verdict.found { border-left-color: var(--high); }
+  .verdict .num {
+    font-size: 40px; font-weight: 700; letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums; line-height: 1;
+    /* Optically seat the digits on the lede's first baseline. */
+    margin-top: -2px;
+  }
+  .verdict .lede { font-size: 15px; color: var(--dim); }
+  .verdict .lede strong { color: var(--ink); font-weight: 600; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px;
+    border-radius: 999px; font-size: 12.5px; font-weight: 500;
+    border: 1px solid var(--edge); background: var(--faint); color: var(--dim);
+  }
+  .chip::before {
+    content: ""; width: 7px; height: 7px; border-radius: 50%;
+    background: currentColor;
+  }
+  .chip.info { color: var(--info); }
+  .chip.low { color: var(--low); }
+  .chip.medium { color: var(--med); }
+  .chip.high { color: var(--high); }
+
+  /* Severity bar: one flex row of weighted segments. Pure CSS, no chart lib. */
+  .sevbar {
+    display: flex; height: 8px; border-radius: 999px; overflow: hidden;
+    margin-top: 14px; background: var(--faint);
+  }
+  .sevbar span { transition: flex-grow .7s var(--ease); }
+  .sevbar .info { background: var(--info); }
+  .sevbar .low { background: var(--low); }
+  .sevbar .medium { background: var(--med); }
+  .sevbar .high { background: var(--high); }
+
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th, td {
-    text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line);
-    vertical-align: top;
-  }
-  th { color: var(--dim); font-weight: 600; font-size: 13px; }
-  td.cp { font-family: var(--mono); white-space: nowrap; }
-  .tag {
-    display: inline-block; padding: 1px 7px; border-radius: 999px;
-    font-size: 12px; border: 1px solid var(--line); color: var(--dim);
-  }
-  .legit { color: var(--ok); font-size: 13px; }
+  th, td { text-align: left; padding: 10px 12px;
+    border-bottom: 1px solid var(--edge); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.04em; }
+  tbody tr { transition: background .18s var(--ease); }
+  tbody tr:hover { background: var(--faint); }
+  td.cp { font-family: var(--mono); white-space: nowrap; font-size: 13px; }
+  .legit { color: var(--ok); font-size: 12.5px; }
   .marker {
-    background: var(--hit); color: #fff; border-radius: 3px; padding: 0 3px;
+    background: var(--high); color: #fff; border-radius: 4px; padding: 0 4px;
     font-family: var(--mono); font-size: 11px;
   }
   #preview {
-    white-space: pre-wrap; word-break: break-word; font: 14px/2 var(--mono);
-    background: var(--panel); border: 1px solid var(--line);
-    border-radius: 8px; padding: 12px; margin-top: 10px;
+    white-space: pre-wrap; word-break: break-word; font: 13px/2 var(--mono);
+    background: var(--faint); border: 1px solid var(--edge);
+    border-radius: var(--radius-sm); padding: 14px; margin-top: 10px;
+    max-height: 420px; overflow: auto;
   }
-  details { margin-top: 22px; }
-  summary { cursor: pointer; color: var(--dim); }
-  footer {
-    margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--line);
-    color: var(--dim); font-size: 14px;
-  }
-  a { color: #58a6ff; }
   .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  button[disabled] { opacity: 0.45; cursor: not-allowed; }
-  button[disabled]:hover { border-color: var(--line); }
-  .note {
-    color: var(--dim); font-size: 13px; margin: 10px 0 0;
-  }
-  @media (max-width: 520px) {
-    body { padding: 18px 12px 56px; }
-    h1 { font-size: 24px; }
-    .row button { flex: 1 1 auto; }
-  }
-  .scope { font-size: 14px; color: var(--dim); }
+  .note { color: var(--dim); font-size: 13px; margin: 12px 0 0; }
+
+  details { margin-top: 20px; }
+  summary { cursor: pointer; color: var(--dim); font-size: 15px; padding: 6px 0; }
+  summary::marker { color: var(--accent); }
+  .scope { font-size: 15px; color: var(--dim); }
   .scope strong { color: var(--ink); }
+
+  footer {
+    margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--edge);
+    color: var(--dim); font-size: 13.5px; text-align: center;
+  }
+  footer a { color: var(--accent); }
+  .visits {
+    display: inline-flex; align-items: center; gap: 7px; margin-top: 12px;
+    padding: 6px 13px; border-radius: 999px; font-size: 12.5px;
+    border: 1px solid var(--edge); background: var(--faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Command palette */
+  .scrim {
+    position: fixed; inset: 0; z-index: 100; display: none;
+    background: rgba(0,0,0,.32); padding: 12vh 16px 16px;
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  }
+  .scrim[open] { display: block; animation: fade .2s var(--ease); }
+  .palette {
+    max-width: 560px; margin: 0 auto; overflow: hidden;
+    background: var(--glass-strong);
+    -webkit-backdrop-filter: blur(34px) saturate(180%);
+    backdrop-filter: blur(34px) saturate(180%);
+    border: 1px solid var(--edge); border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    animation: pop .32s var(--spring);
+  }
+  .palette input {
+    width: 100%; padding: 17px 20px; border: 0; border-bottom: 1px solid var(--edge);
+    background: transparent; color: var(--ink); font: 17px var(--sans);
+  }
+  .palette input:focus { outline: none; }
+  .palette ul { list-style: none; margin: 0; padding: 7px; max-height: 44vh;
+    overflow: auto; }
+  .palette li {
+    padding: 11px 14px; border-radius: 10px; cursor: pointer; font-size: 15px;
+    display: flex; align-items: center; gap: 11px;
+  }
+  .palette li[aria-selected="true"] { background: var(--accent);
+    color: var(--accent-ink); }
+  .palette li[aria-selected="true"] .hint { color: var(--accent-ink); opacity: .8; }
+  .palette .hint { margin-left: auto; font-size: 12px; color: var(--dim); }
+  .palette .empty { padding: 22px; text-align: center; color: var(--dim);
+    font-size: 14px; }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 26px; z-index: 200;
+    transform: translate(-50%, 130%); opacity: 0;
+    padding: 12px 20px; border-radius: 999px; font-size: 14px; font-weight: 500;
+    background: var(--glass-strong); border: 1px solid var(--edge);
+    -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+    box-shadow: var(--shadow-lg); pointer-events: none;
+    transition: transform .45s var(--spring), opacity .3s var(--ease);
+  }
+  #toast.show { transform: translate(-50%, 0); opacity: 1; }
+
+  .reveal { animation: rise .5s var(--ease) both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+  @keyframes fade { from { opacity: 0; } }
+  @keyframes pop { from { opacity: 0; transform: translateY(-8px) scale(.97); } }
+
+  @media (max-width: 560px) {
+    main { padding: 16px 12px 64px; }
+    .row button, .row .toggle { flex: 1 1 auto; justify-content: center; }
+    nav .hide-sm { display: none; }
+    .verdict { flex-direction: column; align-items: flex-start; gap: 8px; }
+  }
+
+  /* Accessibility: motion, transparency, and contrast are user preferences,
+     not decoration we get to insist on. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .001ms !important; animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important; scroll-behavior: auto !important;
+    }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .glass, nav, .palette, #toast { background: var(--glass-solid);
+      -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .aura { display: none; }
+  }
+  @media (prefers-contrast: more) {
+    :root { --edge: currentColor; --dim: var(--ink); }
+    .glass, nav, .palette { background: var(--glass-solid);
+      -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .aura { display: none; }
+  }
 </style>
 </head>
 <body>
+<div class="aura" aria-hidden="true"><i></i><i></i><i></i></div>
+
+<nav class="glass">
+  <span class="wordmark"><span class="dot"></span>markcheck</span>
+  <button class="ghost hide-sm" id="palette-open" aria-label="Open command palette">
+    Actions <span class="kbd">⌘K</span>
+  </button>
+  <a href="changelog.html">Patch notes</a>
+  <button class="ghost" id="theme" aria-label="Switch colour theme"
+    title="Switch colour theme">◐</button>
+</nav>
+
 <main>
-  <h1>markcheck</h1>
-  <p class="sub">Find characters hiding in text that your screen will not
-    show you.</p>
+  <header class="hero">
+    <span class="badge"><b>●</b> Runs entirely in your browser</span>
+    <h1>Find characters hiding<br>in your text</h1>
+    <p>Zero-width marks, bidirectional controls, and space lookalikes render as
+      nothing yet occupy real bytes. Paste anything to see them.</p>
+  </header>
 
-  <p class="privacy"><strong>Nothing leaves this page.</strong> The scan runs
-    in your browser. No text is uploaded, stored, or logged. You can turn off
-    your wifi and it still works.</p>
+  <section class="card glass drop" id="drop">
+    <h2><label for="input">Paste text to check</label></h2>
+    <textarea id="input" spellcheck="false"
+      placeholder="Paste an essay, an email, a document, anything. Or drop a text file here."></textarea>
+    <div class="row">
+      <button class="primary" id="scan">Check text</button>
+      <button id="demo">Load an example</button>
+      <button id="clean">Copy cleaned</button>
+      <button id="export">Export report</button>
+      <button id="clear">Clear</button>
+    </div>
+    <div class="row">
+      <label class="toggle" title="Hide the annotated, likely-legitimate hits">
+        <input type="checkbox" id="susp"><span class="track"></span>
+        Suspicious only
+      </label>
+      <label class="toggle" title="Show the cleaned text beside the original">
+        <input type="checkbox" id="diff"><span class="track"></span>
+        Before / after
+      </label>
+      <input type="file" id="file" accept=".txt,.md,.csv,.json,.log,text/*"
+        hidden>
+      <button class="ghost" id="pick">Choose a file…</button>
+    </div>
+  </section>
 
-  <label for="input"><strong>Paste text to check</strong></label>
-  <textarea id="input" spellcheck="false"
-    placeholder="Paste an essay, an email, a document, anything."></textarea>
-
-  <div class="row">
-    <button class="primary" id="scan">Check text</button>
-    <button id="demo">Load an example</button>
-    <button id="clean">Copy cleaned text</button>
-    <button id="clear">Clear</button>
-  </div>
-
-  <noscript><p class="privacy">This page needs JavaScript. It runs the whole
-    scan locally in your browser, which is why nothing is ever uploaded.</p>
+  <noscript>
+    <p class="card glass">This page needs JavaScript. It runs the whole scan
+      locally in your browser, which is why nothing is ever uploaded.</p>
   </noscript>
 
   <div id="out" role="status" aria-live="polite"></div>
 
-  <details>
+  <details class="card glass">
     <summary>What counts as a hidden character, and what this cannot find</summary>
     <div class="scope">
-      <p>Five categories of characters that render as nothing, or as an
-      ordinary space, while occupying real bytes: zero-width characters,
-      bidirectional controls, variation selectors, nonstandard whitespace, and
-      the Unicode Tags block. People use that gap for text watermarking, for
-      steganographic payloads, and for Trojan-Source attacks
-      (CVE-2021-42574).</p>
+      <p>Six categories of characters that render as nothing, or as an ordinary
+      space, while occupying real bytes: zero-width characters, invisible format
+      controls, bidirectional controls, variation selectors, nonstandard
+      whitespace, and the Unicode Tags block. People use that gap for text
+      watermarking, for steganographic payloads, and for Trojan-Source attacks
+      (CVE-2021-42574). A seventh, opt-in category covering every remaining
+      Unicode default-ignorable code point is available in the command line
+      tool.</p>
+      <p><strong>Every hit is rated.</strong> Annotated, likely-legitimate uses
+      (a byte-order mark at the start of a file, a joiner between two emoji,
+      French punctuation spacing) are <em>info</em>. Unexplained invisibles are
+      <em>medium</em>. The members that reorder text or smuggle payloads are
+      <em>high</em>. "Suspicious only" hides the benign ones.</p>
       <p><strong>What this cannot find.</strong> Statistical watermarks, the
       kind that bias which ordinary word a model picks, add no characters at
       all. Nothing in the bytes can reveal them, so no scanner can find them,
-      this one included. The watermark Anthropic began shipping in Claude
-      models in August 2026 is that kind. The narrow no-break space reported
-      in ChatGPT output in 2025 is the other kind, and it is in scope
-      here.</p>
+      this one included. A hidden-character mark and a statistical one are
+      different mechanisms, and only the first leaves anything to find. Where a
+      vendor is reported to use either, treat that claim as something to verify
+      against that vendor's own documentation: markcheck carries no vendor list
+      and takes no position on intent.</p>
       <p><strong>A clean result means "no hidden characters."</strong> It does
       not mean "not AI-generated."</p>
     </div>
@@ -145,17 +508,29 @@ characters hiding in it. Runs entirely in your browser. Nothing is uploaded.">
 
   <footer>
     markcheck __VERSION__ &middot; MIT licensed &middot;
-    <a href="https://github.com/MavProDev/markcheck" rel="noopener noreferrer">source and command line
-    version on GitHub</a><br>
-    This page is generated from the same character tables the command line
-    tool uses, and a parity test proves the two agree.
+    <a href="https://github.com/MavProDev/markcheck" rel="noopener noreferrer">source
+    and command line version on GitHub</a><br>
+    This page is generated from the same character tables the command line tool
+    uses, and a parity test proves the two agree.
+    <br><!--VISITOR_COUNT-->
   </footer>
 </main>
+
+<div class="scrim" id="scrim" role="dialog" aria-modal="true"
+  aria-label="Command palette">
+  <div class="palette">
+    <input id="palette-input" placeholder="Type a command…" spellcheck="false"
+      autocomplete="off">
+    <ul id="palette-list" role="listbox"></ul>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script>
 __ENGINE__
 
-const ALL = new Set(T.CATEGORIES);
+const ALL = new Set(T.DEFAULTS);
 const $ = function (id) { return document.getElementById(id); };
 
 // Rendering one span per character is linear in document length, so the
@@ -163,7 +538,16 @@ const $ = function (id) { return document.getElementById(id); };
 // table always describe the whole text.
 const PREVIEW_LIMIT = 8000;
 const TABLE_LIMIT = 300;
+// Cap stored hit records so a very large paste that is mostly hidden
+// characters cannot grow an unbounded array; the count stays exact.
+const SCAN_LIMIT = 200000;
 const DEBOUNCE_MS = 150;
+// Only the first rows animate in. Staggering 300 rows would cost more than the
+// scan itself and reads as sluggish rather than polished.
+const STAGGER_MAX = 18;
+
+const REDUCED = window.matchMedia &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function escapeHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
@@ -173,6 +557,45 @@ function escapeHtml(s) {
 
 function plural(n, word) {
   return n.toLocaleString() + " " + word + (n === 1 ? "" : "s");
+}
+
+function toast(msg) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(el._t);
+  el._t = setTimeout(function () { el.classList.remove("show"); }, 1900);
+}
+
+// Theme: follow the OS until the visitor states a preference, then remember it.
+const savedTheme = (function () {
+  try { return localStorage.getItem("markcheck-theme"); } catch (e) { return null; }
+})();
+if (savedTheme) { document.documentElement.setAttribute("data-theme", savedTheme); }
+$("theme").addEventListener("click", function () {
+  const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const current = document.documentElement.getAttribute("data-theme") ||
+    (dark ? "dark" : "light");
+  const next = current === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem("markcheck-theme", next); } catch (e) { /* private mode */ }
+  toast(next === "dark" ? "Dark" : "Light");
+});
+
+function currentSeverity() { return $("susp").checked ? "medium" : "info"; }
+
+// Count up to the final number. Cheap, and it draws the eye to the one figure
+// that matters. Skipped entirely when the visitor asked for less motion.
+function countUp(el, target) {
+  if (REDUCED || target === 0) { el.textContent = target.toLocaleString(); return; }
+  const start = performance.now();
+  const dur = Math.min(900, 260 + target * 8);
+  (function step(now) {
+    const t = Math.min(1, (now - start) / dur);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = Math.round(target * eased).toLocaleString();
+    if (t < 1) { requestAnimationFrame(step); }
+  })(start);
 }
 
 function buildPreview(chars, hits) {
@@ -197,57 +620,102 @@ function buildPreview(chars, hits) {
   return html;
 }
 
+function severityBar(hits) {
+  const order = T.SEVERITIES;
+  const by = {};
+  hits.forEach(function (h) { by[h.severity] = (by[h.severity] || 0) + 1; });
+  const segments = order.filter(function (s) { return by[s]; }).map(function (s) {
+    return '<span class="' + s + '" style="flex-grow:' + by[s] + '"></span>';
+  }).join("");
+  const chips = order.slice().reverse().filter(function (s) { return by[s]; })
+    .map(function (s) {
+      return '<span class="chip ' + s + '">' + s + " " + by[s] + "</span>";
+    }).join("");
+  return { bar: '<div class="sevbar">' + segments + "</div>",
+           chips: '<div class="chips">' + chips + "</div>" };
+}
+
+let lastResult = null;
+
 function render() {
   const text = $("input").value;
   const out = $("out");
-  const copyBtn = $("clean");
+  const minSev = currentSeverity();
   if (!text) {
     out.innerHTML = "";
-    copyBtn.disabled = true;
+    $("clean").disabled = true;
+    $("export").disabled = true;
+    lastResult = null;
     return;
   }
-  const hits = scan(text, ALL);
+  const result = scan(text, ALL, SCAN_LIMIT, minSev);
+  const hits = result.hits;
+  const total = result.total;
   const chars = Array.from(text);
-  copyBtn.disabled = hits.length === 0;
+  lastResult = { result: result, text: text, minSeverity: minSev };
+  $("clean").disabled = total === 0;
+  $("export").disabled = total === 0;
 
-  if (!hits.length) {
+  if (!total) {
     out.innerHTML =
-      '<div class="verdict clean"><span class="count">Clean.</span> ' +
+      '<div class="card glass verdict clean reveal">' +
+      '<div class="num">0</div><div class="lede"><strong>Clean.</strong> ' +
       "No hidden characters in " + plural(chars.length, "character") + ". " +
-      "That does not mean the text was not written by an AI. See below for " +
-      "what this cannot detect.</div>";
+      "That does not mean the text was not written by an AI — see below for " +
+      "what this cannot detect.</div></div>";
     return;
   }
 
+  const sev = severityBar(hits);
   const byCat = {};
   hits.forEach(function (h) { byCat[h.category] = (byCat[h.category] || 0) + 1; });
-  const chips = Object.keys(byCat).sort().map(function (c) {
-    return '<span class="tag">' + c + " " + byCat[c] + "</span>";
-  }).join(" ");
+  const cats = Object.keys(byCat).sort().map(function (c) {
+    return '<span class="chip">' + c + " " + byCat[c] + "</span>";
+  }).join("");
 
-  let html = '<div class="verdict found"><span class="count">' +
-    plural(hits.length, "hidden character") + "</span> in " +
-    plural(chars.length, "character") + ".<br>" + chips + "</div>";
+  let html = '<div class="card glass verdict found reveal">' +
+    '<div class="num" id="hitcount">0</div>' +
+    '<div class="lede"><strong>' +
+    (total === 1 ? "hidden character" : "hidden characters") + "</strong> in " +
+    plural(chars.length, "character") + "." +
+    (result.capped ? " List capped at " + hits.length.toLocaleString() +
+      " to bound memory." : "") +
+    sev.bar + sev.chips + "</div></div>";
 
-  html += '<div class="scroll"><table><thead><tr><th>Where</th>' +
-    "<th>Code point</th><th>Name</th><th>Category</th></tr></thead><tbody>";
-  hits.slice(0, TABLE_LIMIT).forEach(function (h) {
-    html += "<tr><td class='cp'>line " + h.line + ", col " + h.column +
-      "</td><td class='cp'>" + h.codepointHex + "</td><td>" +
-      escapeHtml(h.name) +
+  html += '<div class="card glass reveal"><h2>Where they are</h2>' +
+    '<div class="chips">' + cats + "</div>" +
+    '<div class="scroll"><table><thead><tr><th>Where</th>' +
+    "<th>Code point</th><th>Name</th><th>Severity</th>" +
+    "<th>Category</th></tr></thead><tbody>";
+  hits.slice(0, TABLE_LIMIT).forEach(function (h, i) {
+    const delay = i < STAGGER_MAX && !REDUCED
+      ? ' style="animation-delay:' + (i * 22) + 'ms"' : "";
+    html += '<tr class="reveal"' + delay + "><td class='cp'>line " + h.line +
+      ", col " + h.column + "</td><td class='cp'>" + h.codepointHex +
+      "</td><td>" + escapeHtml(h.name) +
       (h.note ? "<br><span class='legit'>" + escapeHtml(h.note) + "</span>"
               : "") +
-      "</td><td><span class='tag'>" + h.category + "</span></td></tr>";
+      '</td><td><span class="chip ' + h.severity + '">' + h.severity +
+      "</span></td><td><span class='chip'>" + h.category + "</span></td></tr>";
   });
   html += "</tbody></table></div>";
-  if (hits.length > TABLE_LIMIT) {
+  if (total > TABLE_LIMIT) {
     html += '<p class="note">Showing the first ' + TABLE_LIMIT + " of " +
-      hits.length.toLocaleString() + ".</p>";
+      total.toLocaleString() + ".</p>";
   }
+  html += "</div>";
 
-  html += '<p class="note">Where they sit in your text:</p>' +
+  html += '<div class="card glass reveal"><h2>Where they sit in your text</h2>' +
     buildPreview(chars, hits);
+  if ($("diff").checked) {
+    html += '<h2 style="margin-top:18px">After cleaning</h2><div id="preview">' +
+      escapeHtml(stripHidden(text, ALL, minSev)) + "</div>";
+  }
+  html += "</div>";
+
   out.innerHTML = html;
+  const counter = $("hitcount");
+  if (counter) { countUp(counter, total); }
 }
 
 // Typing in a long document should not re-render on every keystroke.
@@ -257,43 +725,200 @@ function scheduleRender() {
   timer = setTimeout(render, DEBOUNCE_MS);
 }
 
-$("scan").addEventListener("click", render);
-$("input").addEventListener("input", scheduleRender);
-$("clear").addEventListener("click", function () {
-  $("input").value = "";
-  render();
-  $("input").focus();
-});
-$("demo").addEventListener("click", function () {
-  $("input").value = "The report\u202fconcludes that revenue rose 12\u00a0000 " +
-    "units.\u200b\nReview the\u200b numbers before Friday.";
-  render();
-});
-$("clean").addEventListener("click", function () {
-  const btn = $("clean");
-  const cleaned = stripHidden($("input").value, ALL);
-  const flash = function (msg) {
-    btn.textContent = msg;
-    setTimeout(function () { btn.textContent = "Copy cleaned text"; }, 1600);
-  };
+function copyCleaned() {
+  const minSev = currentSeverity();
+  const cleaned = stripHidden($("input").value, ALL, minSev);
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(cleaned).then(function () {
-      flash("Copied");
+      toast("Cleaned text copied");
     }, function () {
-      $("input").value = cleaned;
-      render();
-      flash("Cleaned in the box");
+      $("input").value = cleaned; render(); toast("Cleaned in the box");
     });
   } else {
-    // Clipboard access needs a secure context; opening the file directly
-    // from disk is not one, so clean the box instead of failing silently.
-    $("input").value = cleaned;
-    render();
-    flash("Cleaned in the box");
+    // Clipboard access needs a secure context; opening the file directly from
+    // disk is not one, so clean the box instead of failing silently.
+    $("input").value = cleaned; render(); toast("Cleaned in the box");
   }
+}
+
+// Everything is built locally and handed to the browser as a Blob. No upload.
+function exportReport() {
+  if (!lastResult) { return; }
+  const r = lastResult.result;
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  const payload = {
+    tool: "markcheck", version: T.VERSION,
+    unicode_version: T.UNICODE_VERSION,
+    min_severity: lastResult.minSeverity,
+    characters: Array.from(lastResult.text).length,
+    total_hits: r.total, capped: r.capped,
+    hits: r.hits.map(function (h) {
+      return { index: h.index, line: h.line, column: h.column,
+               codepoint: h.codepoint, codepoint_hex: h.codepointHex,
+               name: h.name, category: h.category, severity: h.severity,
+               note: h.note };
+    })
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)],
+    { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "markcheck-report-" + stamp + ".json";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  toast("Report downloaded");
+}
+
+function loadFile(file) {
+  if (!file) { return; }
+  const reader = new FileReader();
+  reader.onload = function () {
+    $("input").value = String(reader.result);
+    render();
+    toast("Loaded " + file.name);
+  };
+  reader.onerror = function () { toast("Could not read that file"); };
+  // Read locally. The file never leaves the machine.
+  reader.readAsText(file);
+}
+
+const DEMO = "The report concludes that revenue rose 12 000 " +
+  "units.​\nReview the​ numbers before Friday.";
+
+const COMMANDS = [
+  { name: "Check text", hint: "⌘↵", run: render },
+  { name: "Load an example", run: function () { $("input").value = DEMO; render(); } },
+  { name: "Copy cleaned text", run: copyCleaned },
+  { name: "Export report as JSON", run: exportReport },
+  { name: "Open a file…", run: function () { $("file").click(); } },
+  { name: "Toggle suspicious only", run: function () {
+      $("susp").checked = !$("susp").checked; render(); } },
+  { name: "Toggle before / after", run: function () {
+      $("diff").checked = !$("diff").checked; render(); } },
+  { name: "Switch colour theme", run: function () { $("theme").click(); } },
+  { name: "Clear the text", hint: "Esc", run: function () {
+      $("input").value = ""; render(); $("input").focus(); } },
+  { name: "Open patch notes", run: function () {
+      window.location.href = "changelog.html"; } }
+];
+
+let paletteIndex = 0;
+let paletteMatches = COMMANDS.slice();
+
+function paletteRender() {
+  const list = $("palette-list");
+  if (!paletteMatches.length) {
+    list.innerHTML = '<li class="empty">No matching command</li>';
+    return;
+  }
+  list.innerHTML = paletteMatches.map(function (c, i) {
+    return '<li role="option" data-i="' + i + '" aria-selected="' +
+      (i === paletteIndex) + '">' + escapeHtml(c.name) +
+      (c.hint ? '<span class="hint">' + escapeHtml(c.hint) + "</span>" : "") +
+      "</li>";
+  }).join("");
+}
+
+function paletteFilter(q) {
+  const needle = q.toLowerCase().trim();
+  paletteMatches = !needle ? COMMANDS.slice() : COMMANDS.filter(function (c) {
+    return c.name.toLowerCase().indexOf(needle) !== -1;
+  });
+  paletteIndex = 0;
+  paletteRender();
+}
+
+function paletteOpen() {
+  $("scrim").setAttribute("open", "");
+  $("palette-input").value = "";
+  paletteFilter("");
+  $("palette-input").focus();
+}
+
+function paletteClose() {
+  $("scrim").removeAttribute("open");
+  $("input").focus();
+}
+
+function paletteRun(i) {
+  const cmd = paletteMatches[i];
+  paletteClose();
+  if (cmd) { cmd.run(); }
+}
+
+$("scan").addEventListener("click", render);
+$("input").addEventListener("input", scheduleRender);
+$("susp").addEventListener("change", render);
+$("diff").addEventListener("change", render);
+$("clear").addEventListener("click", function () {
+  $("input").value = ""; render(); $("input").focus();
+});
+$("demo").addEventListener("click", function () {
+  $("input").value = DEMO; render();
+});
+$("clean").addEventListener("click", copyCleaned);
+$("export").addEventListener("click", exportReport);
+$("pick").addEventListener("click", function () { $("file").click(); });
+$("file").addEventListener("change", function (e) { loadFile(e.target.files[0]); });
+$("palette-open").addEventListener("click", paletteOpen);
+$("scrim").addEventListener("click", function (e) {
+  if (e.target === $("scrim")) { paletteClose(); }
+});
+$("palette-input").addEventListener("input", function (e) {
+  paletteFilter(e.target.value);
+});
+$("palette-list").addEventListener("click", function (e) {
+  const li = e.target.closest("li[data-i]");
+  if (li) { paletteRun(Number(li.dataset.i)); }
+});
+
+const drop = $("drop");
+["dragenter", "dragover"].forEach(function (ev) {
+  drop.addEventListener(ev, function (e) {
+    e.preventDefault(); drop.classList.add("over");
+  });
+});
+["dragleave", "drop"].forEach(function (ev) {
+  drop.addEventListener(ev, function (e) {
+    e.preventDefault();
+    if (ev === "drop" || e.target === drop) { drop.classList.remove("over"); }
+  });
+});
+drop.addEventListener("drop", function (e) {
+  loadFile(e.dataTransfer.files && e.dataTransfer.files[0]);
+});
+
+document.addEventListener("keydown", function (e) {
+  const open = $("scrim").hasAttribute("open");
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault(); open ? paletteClose() : paletteOpen(); return;
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+    e.preventDefault(); render(); return;
+  }
+  if (!open) {
+    if (e.key === "Escape" && document.activeElement === $("input")) {
+      $("input").value = ""; render();
+    }
+    return;
+  }
+  if (e.key === "Escape") { e.preventDefault(); paletteClose(); }
+  else if (e.key === "ArrowDown") {
+    e.preventDefault();
+    paletteIndex = Math.min(paletteIndex + 1, paletteMatches.length - 1);
+    paletteRender();
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    paletteIndex = Math.max(paletteIndex - 1, 0);
+    paletteRender();
+  } else if (e.key === "Enter") { e.preventDefault(); paletteRun(paletteIndex); }
 });
 
 $("clean").disabled = true;
+$("export").disabled = true;
 </script>
 </body>
 </html>

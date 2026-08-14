@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none';
+  script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none';
+  form-action 'none'; connect-src 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>markcheck - patch notes</title>
+<meta name="description" content="Release history for markcheck, the hidden
+Unicode character scanner.">
+<style>
+  :root {
+    --bg: #f2f2f7;
+    --bg-tint-a: #d8e6ff;
+    --bg-tint-b: #ffe4d6;
+    --bg-tint-c: #e6dcff;
+    --glass: rgba(255, 255, 255, 0.66);
+    --glass-solid: #ffffff;
+    --glass-strong: rgba(255, 255, 255, 0.82);
+    --edge: rgba(0, 0, 0, 0.09);
+    --edge-lit: rgba(255, 255, 255, 0.9);
+    --ink: #1d1d1f;
+    --dim: #6e6e73;
+    --faint: rgba(0, 0, 0, 0.045);
+    --accent: #0071e3;
+    --high: #c9342b;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.07);
+    --radius: 18px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto,
+            Helvetica, Arial, sans-serif;
+    --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #000000; --bg-tint-a: #0a2f6b; --bg-tint-b: #5c2a00;
+      --bg-tint-c: #35206b; --glass: rgba(28, 28, 30, 0.62);
+      --glass-solid: #1c1c1e; --glass-strong: rgba(38, 38, 41, 0.86);
+      --edge: rgba(255, 255, 255, 0.11); --edge-lit: rgba(255, 255, 255, 0.14);
+      --ink: #f5f5f7; --dim: #98989d; --faint: rgba(255, 255, 255, 0.06);
+      --accent: #0a84ff; --high: #ff453a;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #000000; --bg-tint-a: #0a2f6b; --bg-tint-b: #5c2a00;
+    --bg-tint-c: #35206b; --glass: rgba(28, 28, 30, 0.62);
+    --glass-solid: #1c1c1e; --glass-strong: rgba(38, 38, 41, 0.86);
+    --edge: rgba(255, 255, 255, 0.11); --edge-lit: rgba(255, 255, 255, 0.14);
+    --ink: #f5f5f7; --dim: #98989d; --faint: rgba(255, 255, 255, 0.06);
+    --accent: #0a84ff; --high: #ff453a;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.65 var(--sans); letter-spacing: -0.011em;
+    -webkit-font-smoothing: antialiased; min-height: 100vh; overflow-x: hidden;
+  }
+  .aura {
+    position: fixed; inset: -20vmax; z-index: -1; pointer-events: none;
+    filter: blur(90px); opacity: 0.5;
+  }
+  .aura i {
+    position: absolute; display: block; border-radius: 50%;
+    width: 46vmax; height: 46vmax;
+  }
+  .aura i:nth-child(1) { background: var(--bg-tint-a); top: 2%; left: 4%;
+    animation: drift1 34s var(--ease) infinite alternate; }
+  .aura i:nth-child(2) { background: var(--bg-tint-b); top: 26%; right: 2%;
+    animation: drift2 42s var(--ease) infinite alternate; }
+  .aura i:nth-child(3) { background: var(--bg-tint-c); bottom: 2%; left: 28%;
+    animation: drift3 38s var(--ease) infinite alternate; }
+  @keyframes drift1 { to { transform: translate3d(8vmax, 6vmax, 0) scale(1.15); } }
+  @keyframes drift2 { to { transform: translate3d(-9vmax, 8vmax, 0) scale(1.1); } }
+  @keyframes drift3 { to { transform: translate3d(6vmax, -7vmax, 0) scale(1.18); } }
+
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid var(--edge); border-radius: var(--radius);
+    box-shadow: var(--shadow), inset 0 1px 0 var(--edge-lit);
+  }
+  @supports not ((backdrop-filter: blur(1px)) or
+                 (-webkit-backdrop-filter: blur(1px))) {
+    .glass { background: var(--glass-solid); }
+  }
+
+  nav {
+    position: sticky; top: 0; z-index: 50; display: flex; align-items: center;
+    gap: 12px; padding: 10px 16px; border-radius: 0; border-width: 0 0 1px;
+    background: var(--glass-strong);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    backdrop-filter: blur(28px) saturate(180%);
+    border-bottom: 1px solid var(--edge);
+  }
+  nav .wordmark {
+    font-weight: 700; font-size: 17px; letter-spacing: -0.02em;
+    display: flex; align-items: center; gap: 8px; margin-right: auto;
+  }
+  nav .dot {
+    width: 10px; height: 10px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  nav a, .ghost {
+    color: var(--ink); text-decoration: none; font-size: 14px; padding: 7px 12px;
+    border-radius: 999px; border: 1px solid transparent; background: transparent;
+    cursor: pointer; font-family: inherit;
+    transition: background .25s var(--ease), transform .25s var(--spring);
+  }
+  nav a:hover, .ghost:hover { background: var(--faint); }
+  nav a:active, .ghost:active { transform: scale(0.96); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  main { max-width: 800px; margin: 0 auto; padding: 22px 16px 80px; }
+  header.hero { text-align: center; padding: 26px 8px 12px; }
+  header.hero h1 {
+    font-size: clamp(32px, 6vw, 46px); margin: 0 0 10px;
+    letter-spacing: -0.035em; font-weight: 700;
+  }
+  header.hero p { color: var(--dim); margin: 0; }
+
+  .release { padding: 22px 24px; margin: 20px 0; animation: rise .5s var(--ease) both; }
+  .release h2 { margin: 0 0 4px; font-size: 15px; }
+  .ver {
+    display: inline-block; font: 600 13px/1 var(--mono); padding: 7px 12px;
+    border-radius: 999px; background: var(--accent); color: #fff;
+    letter-spacing: 0.01em;
+  }
+  .tagline {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--dim); margin: 22px 0 8px; font-weight: 700;
+  }
+  .tagline.danger { color: var(--high); }
+  .release p { margin: 10px 0; color: var(--dim); }
+  .release ul { margin: 8px 0; padding-left: 20px; }
+  .release li { margin: 7px 0; color: var(--dim); }
+  .release strong { color: var(--ink); font-weight: 600; }
+  code {
+    font: 13px/1.4 var(--mono); padding: 2px 6px; border-radius: 6px;
+    background: var(--faint); border: 1px solid var(--edge); color: var(--ink);
+    /* Never split a flag across lines: "--min-severity" breaking after the
+       first dash reads as a different option entirely. */
+    white-space: nowrap;
+  }
+  .release li, .release p { overflow-wrap: break-word; }
+  footer {
+    margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--edge);
+    color: var(--dim); font-size: 13.5px; text-align: center;
+  }
+  footer a { color: var(--accent); }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+  @media (max-width: 560px) {
+    main { padding: 16px 12px 64px; }
+    .release { padding: 18px 16px; }
+    /* A phone is too narrow to hold the longest identifiers on one line, and
+       an unbreakable span would push the whole document sideways. Legibility
+       of a wrapped token beats a page that scrolls horizontally. */
+    code { white-space: normal; overflow-wrap: anywhere; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important;
+      transition-duration: .001ms !important; }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .glass, nav { background: var(--glass-solid);
+      -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .aura { display: none; }
+  }
+  @media (prefers-contrast: more) {
+    :root { --edge: currentColor; --dim: var(--ink); }
+    .glass, nav { background: var(--glass-solid);
+      -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .aura { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="aura" aria-hidden="true"><i></i><i></i><i></i></div>
+
+<nav>
+  <span class="wordmark"><span class="dot"></span>markcheck</span>
+  <a href="index.html">Scanner</a>
+  <button class="ghost" id="theme" aria-label="Switch colour theme"
+    title="Switch colour theme">◐</button>
+</nav>
+
+<main>
+  <header class="hero">
+    <h1>Patch notes</h1>
+    <p>Every release, what changed, and why.</p>
+  </header>
+
+<section class="card glass release"><h2><span class="ver">2.1.0</span></h2>
+<p>A visual and functional overhaul of the browser build. The scanner engine is untouched — the Python/JavaScript parity suite passes unchanged — so this is presentation, ergonomics, and deployment only.</p>
+<h3 class="tagline">Added</h3>
+<ul><li><strong>Redesigned interface.</strong> A translucent, layered treatment with an adaptive light and dark palette, a manual theme switch that overrides the system setting, and restrained motion: spring-eased controls, a staggered result reveal, and a counting verdict figure.</li><li><strong>Severity, surfaced.</strong> The 2.0.0 severity model is now visible in the browser: colour-coded chips, a proportional severity bar, and a <strong>Suspicious only</strong> switch that applies the same <code>--min-severity medium</code> scope as the CLI, so a conservative clean will not break emoji sequences.</li><li><strong>Drag and drop a text file</strong> onto the page, or pick one. Read locally with FileReader; the file never leaves the machine.</li><li><strong>Command palette</strong> on <code>⌘K</code> / <code>Ctrl-K</code>, plus <code>⌘↵</code> to scan and <code>Esc</code> to clear.</li><li><strong>Before / after view</strong> comparing the original with the cleaned text.</li><li><strong>Export report</strong> writes the findings to JSON locally, via a Blob. No upload.</li><li><strong>Patch notes page</strong> at <code>web/changelog.html</code>, generated from <code>CHANGELOG.md</code> by <code>tools/build_web.py</code> and gated in CI like the rest of the web build. It is generated from that file alone, never from git history, whose commit trailers carry addresses and session URLs that do not belong on a public page. A test asserts the rendered page contains no address, URL, or commit trailer.</li><li><strong>Visitor counter, counted on the server.</strong> <code>web/api/index.js</code> substitutes the count into the HTML before it is sent, so the browser makes no extra request and <code>connect-src 'none'</code> still holds. A single integer is stored: no IP address, user agent, per-visitor row, or timestamp. If the datastore is unconfigured or unreachable the page is served exactly as normal with the counter absent, so it can never take the site down.</li></ul>
+<h3 class="tagline">Fixed</h3>
+<ul><li><strong>The browser build was not reproducible across Python versions.</strong> The digit table added in 2.0.0 was derived by asking the running interpreter which code points <code>str.isdigit()</code> accepts, and that set grows with each Unicode release: a machine on Unicode 15.0 emitted two ranges (Kawi and Nag Mundari digits) that a machine on 14.0 did not, so the committed page depended on who built it and the CI staleness gate failed. The table is now frozen at the pinned Unicode version alongside the default-ignorable data, and <code>_note</code> reads from it rather than from <code>str.isdigit()</code>, so the CLI and the browser agree on every interpreter. A test asserts the frozen table is never behind the running Python.</li><li><strong>The security headers the meta CSP cannot carry are now sent for real.</strong> <code>web/vercel.json</code> sets <code>Content-Security-Policy: frame-ancestors 'none'</code>, which is ignored in a <code>&lt;meta&gt;</code> element and was therefore providing no clickjacking protection at all on the hosted copy, plus <code>X-Content-Type-Options</code>, <code>Referrer-Policy</code>, <code>Permissions-Policy</code>, and the cross-origin isolation headers. This closes the last audit finding that could only be fixed at the deployment layer.</li><li><strong>Keyboard focus was invisible on the new switches.</strong> Their real checkbox is visually hidden, so the focus ring was being drawn on an element nobody could see. Found by an automated browser pass, not by eye.</li><li><strong>Content could scroll underneath the sticky header</strong> and become unclickable; the document now reserves scroll padding for it.</li><li>Browser copy said &quot;five categories&quot; where the implementation has six, and still stated a vendor watermark attribution as settled fact. Both were corrected in the README in 2.0.0 but missed in the page itself.</li></ul>
+<h3 class="tagline">Changed</h3>
+<ul><li>The CI staleness gate now diffs the whole <code>web/</code> directory rather than <code>index.html</code> alone, so a stale generated patch-notes page fails the build.</li></ul>
+</section>
+<section class="card glass release"><h2><span class="ver">2.0.0</span></h2>
+<p>Completes the external engineering audit backlog: the remaining product, forensic, and polish items on top of the 1.7.0 hardening pass. Major version because two behaviours changed in ways a script could notice; see Migration.</p>
+<h3 class="tagline">Added</h3>
+<ul><li><strong>Severity model.</strong> Every hit is now rated <code>info</code>, <code>low</code>, <code>medium</code>, or <code>high</code>. Annotated likely-legitimate uses (BOM at file start, emoji ZWJ, presentation selectors, French spacing, digit grouping) are <code>info</code>; bidi embeddings/overrides/isolates and the Tags block are <code>high</code>. New <code>--min-severity LEVEL</code> and <code>--suspicious-only</code> (shorthand for <code>--min-severity medium</code>). The filter narrows <em>scope</em>, not just display: the exit code and <code>--strip</code> follow it, so <code>--suspicious-only --strip</code> is a conservative cleanup that will not break emoji sequences. JSON gains a <code>severity</code> field per hit and a top-level <code>min_severity</code>, both additive.</li><li><strong>Forensic mode.</strong> <code>--include-default-ignorables</code> enables a seventh, opt-in <code>default-ignorable</code> category covering every remaining Unicode <code>Default_Ignorable_Code_Point</code>, including reserved ranges. Off by default so the curated taxonomy keeps its signal-to-noise ratio.</li><li><strong>Specification oracle.</strong> A frozen <code>Default_Ignorable_Code_Point</code> table (pinned Unicode version, independent of the running interpreter) is now the reference the curated taxonomy is tested against. Parity proves Python and JavaScript agree; it cannot prove the shared taxonomy is complete, which is how U+180F stayed missing. A conformance test now asserts the exact set of documented gaps, so a future omission fails a test instead of passing silently.</li><li><code>--force</code> to overwrite an existing <code>FILE.clean.EXT</code>.</li><li><code>tools/benchmark.py</code>, a non-gating harness reporting wall-clock and peak memory across ordinary, newline-dense, mostly-hidden, and mixed-Unicode corpora.</li><li>A man page and bash/zsh completions, generated from the argparse parser by <code>tools/build_docs.py</code> and diff-gated in CI, so a new flag cannot ship with stale docs.</li></ul>
+<h3 class="tagline">Fixed</h3>
+<ul><li><strong>U+180F was named inconsistently across Python versions.</strong> Its name was resolved through <code>unicodedata</code>, but the code point was added in Unicode 14.0, so on Python 3.9/3.10 (which bundle Unicode 13.0) the lookup missed and fell back to a generic label while the generated browser build reported the real name. The Mongolian free variation selectors are now named from an explicit table. Introduced in 1.7.0.</li><li><strong>Browser and CLI advisory notes could disagree on digits.</strong> The browser approximated Python's <code>str.isdigit()</code> with the <code>Nd</code>/<code>No</code> Unicode categories, which is wrong in both directions: U+00BC is <code>No</code> but not a digit, and 128 digits are outside <code>Nd</code>. An exact range table is now generated from CPython, and the parity suite covers the edge cases.</li><li>Backup creation no longer has a check-then-write race: the <code>.bak</code> name is claimed with an atomic exclusive create, so two concurrent runs cannot both conclude no backup exists.</li><li>Atomic writes now fsync the containing directory, so the rename itself is durable and not just the file contents.</li><li><code>--in-place</code> on stdin, a repeated <code>-</code> source, <code>--force</code> without <code>--strip</code>, and <code>--suspicious-only</code> combined with <code>--min-severity</code> are now rejected with a clear message instead of being silently ignored or ambiguous.</li><li>The browser page no longer lists <code>frame-ancestors</code> in its meta CSP. The spec ignores that directive when the policy is delivered in a <code>&lt;meta&gt;</code> element, so listing it implied a clickjacking protection that never existed. It is now documented as an HTTP response header instead. <code>connect-src 'none'</code>, which is what backs the privacy claim, is unchanged and remains effective.</li></ul>
+<h3 class="tagline danger">Changed (breaking)</h3>
+<ul><li><strong><code>--strip</code> no longer silently overwrites an existing <code>FILE.clean.EXT</code>.</strong> It refuses with exit code 2. This matches the existing <code>.bak</code> behaviour, where refusing to clobber is already the rule. <em>Migration</em>: pass <code>--force</code> to restore the old overwrite behaviour.</li><li><strong>A closed pipe is no longer reported as success.</strong> <code>BrokenPipeError</code> used to be caught and turned into exit 0, so <code>markcheck f.md | head</code> claimed success even when hidden characters were found. On POSIX, markcheck now uses default SIGPIPE handling and terminates with the conventional 141; on Windows, the fallback path returns 2 rather than 0. <em>Migration</em>: a pipeline that relied on exit 0 from a truncated run should check for 141, or avoid closing the pipe early.</li></ul>
+<h3 class="tagline">Documentation</h3>
+<ul><li>Performance claims are now backed by <code>tools/benchmark.py</code> and stated honestly: ~3.4x input size in peak memory for ordinary prose with sparse hits, but that is not a bound — pathological hidden-heavy input reaches ~140x uncapped, and <code>--max-hits</code> is what bounds the worst case. Throughput is hardware-dependent and quoted as a measured range.</li><li>Vendor attribution wording softened: markcheck no longer restates any vendor's explanation of a watermark or training artifact as settled fact, and points readers to first-party sources.</li><li>Documented the metadata boundary of atomic replacement (permission bits are preserved; ownership, timestamps, ACLs, and xattrs are not).</li></ul>
+</section>
+<section class="card glass release"><h2><span class="ver">1.7.0</span></h2>
+<p>Hardening release from an external engineering audit. No redesign; the architecture, scope, and zero-dependency model are unchanged. Fixes several reproducible output-contract, encoding, resource, and Unicode-coverage defects.</p>
+<ul><li><strong>Output contract.</strong> <code>--strip --stdout</code> now writes the cleaned document to stdout and <em>only</em> that; the human report goes to stderr. Previously the report was printed to stdout first, so <code>... --strip --stdout &gt; clean.txt</code> captured the report plus the cleaned text. Redirecting stdout now yields the cleaned bytes exactly. New tests assert exact stdout equality, not just substring containment.</li><li><strong>Output contract.</strong> <code>--json</code> and <code>--stdout</code> are now rejected as mutually exclusive. The combination wrote cleaned text and then a JSON payload to the same stream, producing output that was neither valid JSON nor a clean document.</li><li><strong>Encoding fidelity.</strong> UTF-16/UTF-32 byte order is now preserved exactly. The decoder records the precise byte order (<code>utf-16-le</code>/<code>-be</code>, <code>utf-32-le</code>/<code>-be</code>) instead of the generic family, so re-encoding no longer flips a big-endian document to the platform's native little-endian on the way out.</li><li><strong>Backup fidelity.</strong> With <code>--in-place</code>, the <code>.bak</code> backup is now a byte-for-byte copy of the original file rather than a re-encode of the decoded text, so it is a faithful image regardless of source encoding.</li><li><strong>Error status.</strong> A refused write — declining to overwrite an existing <code>.bak</code> — now exits with code 2 instead of leaving the exit code based only on whether hidden characters were found. A script can now tell the requested cleanup did not happen.</li><li><strong>Resource safety.</strong> <code>scan()</code> now tracks line and column incrementally instead of building a list of every newline offset and binary-searching it. On newline-heavy input the old list of Python integers could consume many times the input size before any hit was stored; the streaming pass removes that amplification and simplifies the code.</li><li><strong>Resource safety.</strong> <code>--max-bytes</code> is now enforced at the actual read boundary for files (read at most <code>max_bytes + 1</code>), not only via a <code>getsize()</code> precheck that a growing file or a special file could defeat.</li><li><strong>Unicode coverage.</strong> U+180F MONGOLIAN FREE VARIATION SELECTOR FOUR is now detected. It is an invisible variation selector in the stated threat class and was previously missed by both the Python and the browser builds.</li><li><strong>Browser resource safety.</strong> The browser scan now caps stored hit records (mirroring the Python <code>total</code>/stored/<code>capped</code> model) so a very large paste that is mostly hidden characters cannot grow an unbounded array in the tab. The reported total stays exact.</li><li>Docs: corrected the category count (six, not five), documented the byte-order and byte-for-byte backup guarantees.</li><li>Tests: added exact-equality output-contract tests, explicit BE/LE encoding fixtures, an FVS4 detection test, a bounded-read test, and replaced bare file <code>open()</code> calls with context managers.</li></ul>
+</section>
+<section class="card glass release"><h2><span class="ver">1.6.0</span></h2>
+<ul><li>Fix a false annotation: a NO-BREAK SPACE or NARROW NO-BREAK SPACE at the end of the text was labeled &quot;French-style punctuation spacing (likely legitimate)&quot;. An empty string is a substring of every string in Python, so the membership test matched when there was no following character at all. A trailing hidden space is exactly where a watermark would sit, so this annotation was actively misleading. Found by differential testing against the new browser build.</li><li>Add a browser version at <code>web/index.html</code>. Paste text, see what is hiding in it. Runs entirely client side; no text is uploaded, stored, or logged.</li><li>Add <code>tools/build_web.py</code>, which generates the browser build from markcheck.py so the two cannot drift, and <code>tools/check_parity.py</code>, which proves across 1519 cases that the JavaScript reports the identical hits, positions, names, notes, and stripped output as the Python.</li><li>CI now runs the parity check and fails if the committed web build is stale.</li><li>Expand packaging metadata (authors, classifiers, changelog URL) and add a .gitignore.</li><li>README: quickstart above the fold, and install paths that do not require cloning first.</li><li>Browser build polish: a Content-Security-Policy that enforces the privacy claim technically (<code>connect-src 'none'</code> means the page cannot phone home even if it wanted to), a no-referrer policy, a noscript message, an aria-live results region, and a horizontally scrolling results table on narrow screens.</li><li>Browser build performance: the inline preview is capped at 8,000 characters and typing is debounced, so a large document no longer rebuilds the whole DOM on every keystroke. Counts and the results table still describe the entire text, and the truncation is stated on screen. A pathological input of 30,000 hidden characters used to generate roughly 900 KB of markup; it now generates 8 KB.</li></ul>
+</section>
+<section class="card glass release"><h2><span class="ver">1.5.1</span></h2>
+<ul><li>Fix three Windows failures found by the CI matrix. A console using a locale codec such as cp1252 cannot encode most of Unicode, so <code>--strip --stdout</code> raised UnicodeEncodeError on ordinary non-Latin-1 text, and a filename outside the console codec crashed the report. Cleaned text is now written as bytes in the source encoding, and stdout/stderr use backslashreplace so undisplayable characters degrade instead of aborting the run. The binary write falls back to a text write when stdout has no binary layer, as under redirect_stdout or in a notebook.</li><li>Tests invoke the CLI with explicit UTF-8 bytes rather than subprocess text mode, which encodes using the platform locale and made the suite fail on Windows for reasons unrelated to the code under test.</li></ul>
+</section>
+<section class="card glass release"><h2><span class="ver">1.5.0</span></h2>
+<ul><li><code>--strip</code> now writes the cleaned file in the encoding it read. A UTF-16 or UTF-32 document was previously transcoded to UTF-8 without warning; the byte-order mark consumed at decode time is now restored on write. The <code>.bak</code> backup is written in the source encoding too.</li><li><code>_decode()</code> returns (text, encoding) and <code>read_source()</code> returns (text, label, encoding); <code>write_text()</code> takes an encoding argument.</li><li>JSON output includes the detected <code>encoding</code> per source.</li></ul>
+</section>
+<section class="card glass release"><h2><span class="ver">1.4.1</span></h2>
+<ul><li>Fix: <code>markcheck - --strip</code> treated the conventional stdin dash as a filename and wrote a file named <code>-.clean</code> into the working directory. A <code>-</code> argument now resolves to stdin everywhere.</li><li>Fix: <code>--strip --in-place</code> on a symlink replaced the link with a regular file and left the real document untouched. It now follows the link.</li><li>Fix: the <code>.bak</code> backup inherited the temp file's 0600 mode instead of the original file's permissions.</li><li><code>--stdout</code> now errors instead of being silently ignored when passed without <code>--strip</code> or alongside file arguments.</li><li>Strip status lines say &quot;changed&quot; rather than &quot;removed&quot;: whitespace hits are normalized in place, so the cleaned text is not always shorter.</li><li>Document the symlink and <code>--stdout</code> semantics, and note that OpenAI attributes the 2025 U+202F sightings to a training artifact.</li></ul>
+</section>
+<section class="card glass release"><h2><span class="ver">1.4.0</span></h2>
+<ul><li>New <code>whitespace</code> category: NO-BREAK SPACE, NARROW NO-BREAK SPACE, the en/em space family, line and paragraph separators, NEL, Ogham space mark, and ideographic space. Space lookalikes are the class behind the 2025 reports of U+202F in ChatGPT output; markcheck now detects them. Use <code>--exclude whitespace</code> for typeset or French text.</li><li><code>--strip</code> normalizes whitespace hits (ASCII space, or newline for line and paragraph separators) instead of deleting them, so cleaning cannot weld <code>10 km</code> into <code>10km</code>. Zero-width characters are still deleted.</li><li>Annotate NBSP/NNBSP used for French punctuation spacing or digit grouping as likely legitimate, matching the existing emoji-ZWJ annotations.</li><li>Track the Mongolian free variation selectors (U+180B..U+180D) in the variation-selector category.</li><li>The strip status line now reports the exact count of characters removed or normalized (replacements do not change text length).</li></ul>
+</section>
+<section class="card glass release"><h2><span class="ver">1.3.1</span></h2>
+<ul><li>Fix test-suite portability: the broken-pipe test shelled out to <code>head</code>, which does not exist on Windows; it now runs only where coreutils do.</li><li>Skip the subprocess CLI tests on platforms that cannot spawn processes (iOS Python environments such as a-Shell). The tool itself needs no subprocess support and runs there unchanged.</li><li>Wrap the handful of lines that exceeded 79 characters, so the lint-clean claim reproduces with stock pyflakes and pycodestyle settings.</li><li>Add the GitHub Actions workflow the README badge points to: unittest plus lint across Linux, macOS, and Windows on Python 3.9 to 3.13.</li></ul>
+</section>
+<section class="card glass release"><h2><span class="ver">1.3.0</span></h2>
+<ul><li>Add <code>--max-bytes</code> (default 100 MB): refuse oversized inputs before reading them into memory. Pass 0 to disable.</li><li>Add <code>--max-hits</code> (default 200,000): cap stored hit records so a file that is mostly hidden characters cannot exhaust RAM. The reported total stays exact even when the per-location list is capped.</li><li><code>scan()</code> now returns a ScanResult(hits, total, capped) namedtuple.</li></ul>
+</section>
+<section class="card glass release"><h2><span class="ver">1.2.0</span></h2>
+<ul><li>Annotate VS15/VS16 variation selectors following an emoji base as likely legitimate, cutting false-alarm noise on ordinary emoji text.</li><li><code>--strip --in-place</code> now preserves the original file's permission bits (a 0600 file stays 0600 instead of widening to 0644).</li><li>Atomic writes use a unique temp file and fsync before rename (durable, no fixed-name collision between concurrent runs).</li><li>Accept <code>-</code> as an explicit stdin argument; clamp <code>--show</code> to non-negative.</li><li>Lint clean under pyflakes and pycodestyle.</li></ul>
+</section>
+<section class="card glass release"><h2><span class="ver">1.1.0</span></h2>
+<ul><li>Graceful encoding handling: detect UTF-16/UTF-32 by BOM; refuse to guess a legacy 8-bit codec instead of crashing on non-UTF-8 input.</li><li>Preserve and report a UTF-8 byte-order mark instead of silently dropping it.</li><li><code>--strip --in-place</code> now writes a <code>.bak</code> backup by default and refuses to overwrite an existing backup; added <code>--no-backup</code>. All writes are atomic.</li><li>Clear errors (exit 2) for directories and unreadable files; no tracebacks.</li><li>Expanded tests: real subprocess CLI coverage, encoding cases, strip-safety, and randomized round-trip fuzzers. Added CI across OSes and Python 3.9-3.13.</li></ul>
+</section>
+<section class="card glass release"><h2><span class="ver">1.0.0</span></h2>
+<ul><li>Initial release: categorized hidden-character scanner with strip, JSON, category filters, stdin, and exit codes.</li></ul>
+</section>
+
+  <footer>
+    markcheck 2.1.0 &middot; MIT licensed &middot;
+    <a href="https://github.com/MavProDev/markcheck" rel="noopener noreferrer">source
+    on GitHub</a><br>
+    Generated from CHANGELOG.md at build time; never edited by hand.
+  </footer>
+</main>
+
+<script>
+// Mirrors the scanner page so the choice carries across both.
+const saved = (function () {
+  try { return localStorage.getItem("markcheck-theme"); } catch (e) { return null; }
+})();
+if (saved) { document.documentElement.setAttribute("data-theme", saved); }
+document.getElementById("theme").addEventListener("click", function () {
+  const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const current = document.documentElement.getAttribute("data-theme") ||
+    (dark ? "dark" : "light");
+  const next = current === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem("markcheck-theme", next); } catch (e) { /* private */ }
+});
+</script>
+</body>
+</html>

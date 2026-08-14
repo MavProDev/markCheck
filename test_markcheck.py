@@ -930,15 +930,43 @@ class TestChangelogRendering(unittest.TestCase):
         self.assertEqual(html.count("<section"), html.count("</section>"))
         self.assertEqual(html.count("<section"), 2)
 
-    def test_rendered_page_leaks_no_contact_or_session_data(self):
-        # The public page must never carry an address, a URL, or the commit
-        # trailers git history holds. Generated from CHANGELOG.md only.
-        with open(os.path.join(os.path.dirname(SCRIPT), "CHANGELOG.md"),
-                  encoding="utf-8") as fh:
-            body = self.bw.changelog_html(fh.read())
-        for needle in ("@", "http", "session_", "Co-Authored", "noreply"):
-            self.assertNotIn(needle, body,
-                             f"{needle!r} reached the public patch notes")
+    def test_no_template_ships_an_unsubstituted_marker(self):
+        # A missed placeholder would ship the literal "__SHARED_CSS__" to
+        # visitors and leave the page unstyled.
+        web = os.path.join(os.path.dirname(SCRIPT), "web")
+        for name in ("index.html", "changelog.html", "about.html"):
+            with open(os.path.join(web, name), encoding="utf-8") as fh:
+                page = fh.read()
+            for marker in ("__SHARED_CSS__", "__BODY__", "__VERSION__",
+                           "__ENGINE__", "__TABLES__"):
+                self.assertNotIn(marker, page, f"{marker} left in {name}")
+
+    # The only outbound link any generated page may carry.
+    ALLOWED_URLS = {"https://github.com/MavProDev/markcheck"}
+
+    def test_generated_pages_carry_no_address_or_stray_url(self):
+        # Substring matching is too blunt here: CSS is full of @media, and
+        # every page has a http-equiv meta tag. Match what a leak actually
+        # looks like instead — an address, or a URL we did not intend.
+        import re
+        web = os.path.join(os.path.dirname(SCRIPT), "web")
+        for name in ("index.html", "changelog.html", "about.html"):
+            with open(os.path.join(web, name), encoding="utf-8") as fh:
+                page = fh.read()
+            self.assertIsNone(
+                re.search(r"[\w.+-]+@[\w-]+\.[a-z]{2,}", page),
+                f"an email address reached {name}")
+            urls = set(re.findall(r"https?://[^\s\"'<>)]+", page))
+            self.assertEqual(urls - self.ALLOWED_URLS, set(),
+                             f"unexpected outbound URL in {name}")
+            for needle in ("session_", "Co-Authored", "Claude-Session"):
+                self.assertNotIn(needle, page, f"{needle!r} reached {name}")
+
+    # Superseded by test_generated_pages_carry_no_address_or_stray_url, which
+    # checks the published artifact rather than the intermediate fragment and
+    # matches on what a leak looks like instead of on bare substrings. The
+    # substring version rejected a changelog entry that merely mentioned
+    # "@media", which is a false positive, not a leak.
 
 
 if __name__ == "__main__":

@@ -36,12 +36,14 @@ EDGE_CASES = [
     "a\u2028b",
     "trailing nnbsp\u202f", "trailing nbsp\u00a0", "\u0661\u00a0\u0662",
     "\n\n\u200b", "\u200b" * 40, "plain ascii text with no hits at all",
+    "a\u180fb", "\u180b\u180c\u180d\u180f",
 ]
 
 
 def corpus():
     tracked = (list(m._SINGLE) + list(m._WHITESPACE)
-               + list(range(0x180B, 0x180E)) + list(range(0xFE00, 0xFE10))
+               + list(range(0x180B, 0x180E)) + [0x180F]
+               + list(range(0xFE00, 0xFE10))
                + list(range(0xE0100, 0xE0110)) + [0xE0001]
                + list(range(0xE0020, 0xE0080)))
     pool = (list("the quick brown fox 0123 \n\t.,!?;:%")
@@ -85,7 +87,7 @@ const ALL = new Set(api.T.CATEGORIES);
 const bad = [];
 data.corpus.forEach((text, k) => {
   const want = data.ref[k];
-  const got = api.scan(text, ALL).map(h => [h.index, h.line,
+  const got = api.scan(text, ALL).hits.map(h => [h.index, h.line,
     h.column, h.codepoint, h.name, h.category, h.note]);
   if (JSON.stringify(got) !== JSON.stringify(want.hits)) {
     bad.push({case: k, kind: "scan", text, want: want.hits, got});

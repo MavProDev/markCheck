@@ -28,9 +28,10 @@ Exit code `0` means clean, `1` means hidden characters were found. Add
 
 ## What it finds
 
-Five categories of characters that render as nothing, or as an ordinary space,
-while occupying real bytes: zero-width characters, bidirectional controls,
-variation selectors, nonstandard whitespace, and the Unicode Tags block. People
+Six categories of characters that render as nothing, or as an ordinary space,
+while occupying real bytes: zero-width characters, invisible format controls,
+bidirectional controls, variation selectors, nonstandard whitespace, and the
+Unicode Tags block. People
 use that gap for text watermarking, for steganographic payloads, and for
 Trojan-Source attacks (CVE-2021-42574). The narrow no-break space reported in
 ChatGPT output in 2025, U+202F, is in scope here.
@@ -139,12 +140,16 @@ while zero-width and format characters, which occupy no width, are deleted.
 
 markcheck reads UTF-8 by default and auto-detects UTF-16 and UTF-32 from a
 byte-order mark. `--strip` writes the cleaned file back in the encoding it
-read, so a UTF-16 document does not silently become a UTF-8 one; the
+read, so a UTF-16 document does not silently become a UTF-8 one; the exact
+byte order is preserved, so a big-endian file stays big-endian and the
 byte-order mark the decoder consumed is restored on the way out. Line endings
-are preserved as found, so a CRLF file stays CRLF. A UTF-8 BOM is preserved and reported (it is itself a
-zero-width character). markcheck will not guess a legacy 8-bit encoding such as
-Latin-1: a wrong guess would corrupt the bytes it is meant to inspect, so it
-reports a clear error and asks you to re-save as UTF-8.
+are preserved as found, so a CRLF file stays CRLF. A UTF-8 BOM is preserved and
+reported (it is itself a zero-width character). With `--in-place`, the `.bak`
+backup is a byte-for-byte copy of the original file, not a re-encode, so it is
+a faithful image whatever the source encoding. markcheck will not guess a
+legacy 8-bit encoding such as Latin-1: a wrong guess would corrupt the bytes it
+is meant to inspect, so it reports a clear error and asks you to re-save as
+UTF-8.
 
 ## Categories
 
@@ -210,7 +215,7 @@ students, teachers, editors, and hiring teams.
 
 The page is generated from `markcheck.py` by `tools/build_web.py`, never
 edited by hand, and `tools/check_parity.py` proves the two implementations
-agree across 1519 cases on every hit, position, name, note, and cleaned
+agree across 1521 cases on every hit, position, name, note, and cleaned
 output. CI fails if the committed page drifts from the module.
 
 ```bash

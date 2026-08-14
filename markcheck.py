@@ -20,7 +20,6 @@ It is source-agnostic. There is no allow/deny list tied to any vendor.
 from __future__ import annotations
 
 import argparse
-import bisect
 import json
 import os
 import sys
@@ -28,7 +27,7 @@ import tempfile
 import unicodedata
 from collections import Counter, namedtuple
 
-__version__ = "1.6.0"
+__version__ = "1.7.0"
 
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024  # 100 MB
 DEFAULT_MAX_HITS = 200_000
@@ -145,8 +144,12 @@ def classify(cp):
     hit = _SINGLE.get(cp)
     if hit is not None:
         return hit
+    # 0x180B..0x180F are the Mongolian free variation selectors. U+180E
+    # (MONGOLIAN VOWEL SEPARATOR) sits inside that range but is not a variation
+    # selector; it is handled by _SINGLE above, which classify checks first, so
+    # spanning the whole range here is safe and also catches U+180F FVS4.
     if 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF \
-            or 0x180B <= cp <= 0x180D:
+            or 0x180B <= cp <= 0x180F:
         return (unicodedata.name(chr(cp), "VARIATION SELECTOR"),
                 "variation-selector")
     if cp == 0xE0001 or 0xE0020 <= cp <= 0xE007F:
@@ -195,27 +198,30 @@ def scan(text, categories, max_hits=0):
     pathological input (a file that is mostly hidden characters) while keeping
     the reported count honest.
     """
-    newlines = [j for j, ch in enumerate(text) if ch == "\n"]
     hits = []
     total = 0
     capped = False
+    line = 1
+    col = 0
     for i, ch in enumerate(text):
-        info = classify(ord(ch))
-        if info is None or info[1] not in categories:
-            continue
-        total += 1
-        if max_hits and len(hits) >= max_hits:
-            capped = True
-            continue
-        name, category = info
-        line = bisect.bisect_right(newlines, i) + 1
-        col = i - (newlines[line - 2] if line > 1 else -1)
-        hits.append({
-            "index": i, "line": line, "column": col,
-            "codepoint": ord(ch), "codepoint_hex": f"U+{ord(ch):04X}",
-            "name": name, "category": category,
-            "note": _note(text, i, ord(ch)),
-        })
+        col += 1
+        cp = ord(ch)
+        info = classify(cp)
+        if info is not None and info[1] in categories:
+            total += 1
+            if max_hits and len(hits) >= max_hits:
+                capped = True
+            else:
+                name, category = info
+                hits.append({
+                    "index": i, "line": line, "column": col,
+                    "codepoint": cp, "codepoint_hex": f"U+{cp:04X}",
+                    "name": name, "category": category,
+                    "note": _note(text, i, cp),
+                })
+        if ch == "\n":
+            line += 1
+            col = 0
     return ScanResult(hits, total, capped)
 
 
@@ -240,6 +246,15 @@ class SourceError(Exception):
     """Raised when a source cannot be read or decoded as text."""
 
 
+class OutputError(Exception):
+    """Raised when a requested write cannot be performed.
+
+    Distinct from OSError: it covers refusals that are policy, not I/O failure,
+    such as declining to clobber an existing backup. Both map to exit code 2 so
+    a script can tell the requested cleanup did not happen.
+    """
+
+
 def _decode(raw, label):
     """Decode bytes as text; return (text, encoding).
 
@@ -249,19 +264,25 @@ def _decode(raw, label):
     the very bytes we are inspecting, so non-Unicode input is a clear error.
 
     The encoding is returned so that --strip can write a cleaned file back in
-    the encoding it arrived in. Re-encoding UTF-16/UTF-32 restores the BOM the
-    decoder consumed, so the round trip is byte-faithful apart from the
-    characters markcheck was asked to remove.
+    the encoding it arrived in. The returned label records the exact byte order
+    (utf-16-le/-be, utf-32-le/-be), not just the generic family: the generic
+    codec re-encodes in the platform's native byte order, which would silently
+    flip a big-endian document to little-endian on the way out. write_text
+    restores the original BOM and byte order from this label, so the round trip
+    is byte-faithful apart from the characters markcheck was asked to remove.
     """
-    for bom, enc in ((b"\xff\xfe\x00\x00", "utf-32"),
-                     (b"\x00\x00\xfe\xff", "utf-32"),
-                     (b"\xff\xfe", "utf-16"),
-                     (b"\xfe\xff", "utf-16")):
+    for bom, generic, precise in (
+            (b"\xff\xfe\x00\x00", "utf-32", "utf-32-le"),
+            (b"\x00\x00\xfe\xff", "utf-32", "utf-32-be"),
+            (b"\xff\xfe", "utf-16", "utf-16-le"),
+            (b"\xfe\xff", "utf-16", "utf-16-be")):
         if raw.startswith(bom):
             try:
-                return raw.decode(enc), enc
+                # Decode with the generic codec so it consumes the BOM and
+                # reads byte order from it; keep the precise label for writing.
+                return raw.decode(generic), precise
             except UnicodeDecodeError as exc:
-                raise SourceError(f"{label}: {enc} decode failed: {exc}")
+                raise SourceError(f"{label}: {generic} decode failed: {exc}")
     try:
         return raw.decode("utf-8"), "utf-8"
     except UnicodeDecodeError as exc:
@@ -300,15 +321,44 @@ def read_source(path, max_bytes=0):
                           f"({max_bytes}); pass --max-bytes 0 to allow")
     try:
         with open(path, "rb") as fh:
-            raw = fh.read()
+            if max_bytes:
+                # getsize above is only a precheck: the file can grow between
+                # the stat and the read, and special files (pipes, /proc) make
+                # size a poor proxy for read volume. Enforce the limit at the
+                # actual read boundary, matching the stdin path.
+                raw = fh.read(max_bytes + 1)
+                if len(raw) > max_bytes:
+                    raise SourceError(
+                        f"{path}: input exceeds --max-bytes ({max_bytes}); "
+                        f"pass --max-bytes 0 to allow")
+            else:
+                raw = fh.read()
     except OSError as exc:
         raise SourceError(f"{path}: {exc.strerror or exc}")
     text, encoding = _decode(raw, path)
     return text, path, encoding
 
 
-def write_text(path, text, encoding="utf-8", preserve_mode_from=None):
-    """Write text to path atomically and durably in the given encoding.
+_ENCODING_BOM = {
+    "utf-16-le": b"\xff\xfe",
+    "utf-16-be": b"\xfe\xff",
+    "utf-32-le": b"\xff\xfe\x00\x00",
+    "utf-32-be": b"\x00\x00\xfe\xff",
+}
+
+
+def _encode_with_bom(text, encoding):
+    """Encode text, restoring the exact BOM/byte order that _decode recorded.
+
+    The endian-specific codecs (utf-16-le, ...) do not emit a BOM, so the
+    original one is prepended here. This preserves the source byte order
+    exactly, unlike the generic utf-16/utf-32 codecs which write native order.
+    """
+    return _ENCODING_BOM.get(encoding, b"") + text.encode(encoding)
+
+
+def _atomic_write(path, data, preserve_mode_from=None):
+    """Write bytes to path atomically and durably.
 
     Writes to a unique temp file in the same directory, fsyncs it, then
     os.replace()s it into place (atomic on the same filesystem). If
@@ -318,8 +368,8 @@ def write_text(path, text, encoding="utf-8", preserve_mode_from=None):
     directory = os.path.dirname(os.path.abspath(path))
     fd, tmp = tempfile.mkstemp(prefix=".markcheck-", dir=directory)
     try:
-        with os.fdopen(fd, "w", encoding=encoding, newline="") as fh:
-            fh.write(text)
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
             fh.flush()
             os.fsync(fh.fileno())
         if preserve_mode_from is not None:
@@ -336,34 +386,53 @@ def write_text(path, text, encoding="utf-8", preserve_mode_from=None):
         raise
 
 
-def report_text(label, text, result, show):
+def write_text(path, text, encoding="utf-8", preserve_mode_from=None):
+    """Write text to path atomically and durably, restoring any source BOM."""
+    _atomic_write(path, _encode_with_bom(text, encoding), preserve_mode_from)
+
+
+def copy_bytes(src, dst, preserve_mode_from=None):
+    """Copy src's raw bytes to dst atomically, so a backup is byte-for-byte.
+
+    Re-encoding the decoded text cannot round-trip a UTF-16/UTF-32 big-endian
+    document faithfully (native byte order leaks in); a raw copy makes the .bak
+    an exact image of the original bytes regardless of encoding.
+    """
+    with open(src, "rb") as fh:
+        data = fh.read()
+    _atomic_write(dst, data, preserve_mode_from)
+
+
+def report_text(label, text, result, show, file=None):
+    out = file if file is not None else sys.stdout
     hits, total = result.hits, result.total
-    print(f"\nSource: {label}")
-    print(f"Characters: {len(text)}")
-    print(f"Hidden-character hits: {total}")
+    print(f"\nSource: {label}", file=out)
+    print(f"Characters: {len(text)}", file=out)
+    print(f"Hidden-character hits: {total}", file=out)
     if total == 0:
-        print("  CLEAN. No tracked hidden characters.")
+        print("  CLEAN. No tracked hidden characters.", file=out)
         print("  Note: byte inspection cannot detect statistical "
-              "(token-level) watermarks.")
+              "(token-level) watermarks.", file=out)
         return
     if result.capped:
         print(f"  (list capped at {len(hits)} to bound memory; counts and "
-              f"summaries below cover those {len(hits)} of {total})")
+              f"summaries below cover those {len(hits)} of {total})", file=out)
     by_cat = Counter(h["category"] for h in hits)
     cats = ", ".join(f"{c}={n}" for c, n in by_cat.most_common())
-    print("  By category: " + cats)
-    print("  By character:")
+    print("  By category: " + cats, file=out)
+    print("  By character:", file=out)
     for (cp, name), n in Counter((h["codepoint"], h["name"])
                                  for h in hits).most_common():
-        print(f"    U+{cp:04X}  {name:<34} x{n}")
+        print(f"    U+{cp:04X}  {name:<34} x{n}", file=out)
     show = max(show, 0)
-    print(f"  Locations (up to {show}):")
+    print(f"  Locations (up to {show}):", file=out)
     for h in hits[:show]:
         tail = f"  {h['note']}" if h["note"] else ""
         print(f"    line {h['line']:>4} col {h['column']:>4}  "
-              f"{h['codepoint_hex']} {h['name']}{tail}")
+              f"{h['codepoint_hex']} {h['name']}{tail}", file=out)
     if len(hits) > show:
-        print(f"    ...{len(hits) - show} more (use --show N or --json)")
+        print(f"    ...{len(hits) - show} more (use --show N or --json)",
+              file=out)
 
 
 def _clean_path(path):
@@ -447,7 +516,7 @@ def _do_strip(path, text, cleaned, args, changed, encoding="utf-8"):
                 sys.stdout.write(cleaned)
             else:
                 sys.stdout.flush()
-                stream.write(cleaned.encode(encoding))
+                stream.write(_encode_with_bom(cleaned, encoding))
                 stream.flush()
             return None
         print(f"  stdin: changed {changed}; use --stdout to emit the cleaned "
@@ -461,10 +530,13 @@ def _do_strip(path, text, cleaned, args, changed, encoding="utf-8"):
         if not args.no_backup:
             backup = target + ".bak"
             if os.path.exists(backup):
-                print(f"  refusing to overwrite existing backup {backup}; "
-                      f"move it or pass --no-backup", file=sys.stderr)
-                return None
-            write_text(backup, text, encoding, preserve_mode_from=target)
+                raise OutputError(
+                    f"refusing to overwrite existing backup {backup}; "
+                    f"move it or pass --no-backup")
+            # A byte-for-byte copy of the original, not a re-encode of the
+            # decoded text, so the backup is a faithful image even for
+            # UTF-16/UTF-32 big-endian input.
+            copy_bytes(target, backup, preserve_mode_from=target)
         write_text(target, cleaned, encoding, preserve_mode_from=target)
         return f"  Cleaned in place: {target} (changed {changed})" + (
             "" if args.no_backup else f", backup {target}.bak")
@@ -498,6 +570,13 @@ def main(argv=None):
         return 2
     if args.stdout and not args.strip:
         print("error: --stdout only applies with --strip", file=sys.stderr)
+        return 2
+    if args.json and args.stdout:
+        # Both want to own stdout: --stdout emits the cleaned document, --json
+        # emits a structured report. Interleaving them yields a stream that is
+        # neither valid JSON nor a clean document.
+        print("error: --json and --stdout are mutually exclusive",
+              file=sys.stderr)
         return 2
     if args.stdout and [f for f in args.files if f != "-"]:
         print("error: --stdout applies to stdin only; for files use --strip "
@@ -535,14 +614,18 @@ def main(argv=None):
                         "hits": result.hits})
 
         if not args.json:
-            report_text(label, text, result, args.show)
+            # In --stdout mode, stdout carries the cleaned document only, so
+            # the human report goes to stderr; a redirect then captures the
+            # cleaned bytes exactly, with nothing else mixed in.
+            report_text(label, text, result, args.show,
+                        file=sys.stderr if args.stdout else sys.stdout)
 
         if args.strip:
             try:
                 line = _do_strip(path, text,
                                  strip_hidden(text, categories),
                                  args, result.total, encoding)
-            except OSError as exc:
+            except (OSError, OutputError) as exc:
                 print(f"error: cannot write cleaned output for {label}: {exc}",
                       file=sys.stderr)
                 had_error = True

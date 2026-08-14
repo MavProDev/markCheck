@@ -14,9 +14,12 @@ function classify(cp) {
     const n = cp <= 0xFE0F ? cp - 0xFE00 + 1 : cp - 0xE0100 + 17;
     return { name: "VARIATION SELECTOR-" + n, category: "variation-selector" };
   }
-  if (cp >= 0x180B && cp <= 0x180D) {
-    const words = ["ONE", "TWO", "THREE"];
-    return { name: "MONGOLIAN FREE VARIATION SELECTOR " + words[cp - 0x180B],
+  // Mongolian free variation selectors. U+180E (VOWEL SEPARATOR) falls in
+  // this span but is handled by T.SINGLES above, so it is skipped here.
+  if ((cp >= 0x180B && cp <= 0x180D) || cp === 0x180F) {
+    const words = { 0x180B: "ONE", 0x180C: "TWO", 0x180D: "THREE",
+                    0x180F: "FOUR" };
+    return { name: "MONGOLIAN FREE VARIATION SELECTOR " + words[cp],
              category: "variation-selector" };
   }
   const tag = T.TAGS[cp];
@@ -61,9 +64,13 @@ function note(chars, i, cp) {
 }
 
 // Iterate by code point, matching Python string indexing on astral characters.
-function scan(text, categories) {
+// Returns { hits, total, capped }, mirroring Python's ScanResult: total is the
+// true count, hits holds at most maxHits records so a paste that is mostly
+// hidden characters cannot grow an unbounded array in the tab.
+function scan(text, categories, maxHits) {
   const chars = Array.from(text);
   const hits = [];
+  let total = 0, capped = false;
   let line = 1, col = 0;
   for (let i = 0; i < chars.length; i++) {
     const ch = chars[i];
@@ -71,16 +78,21 @@ function scan(text, categories) {
     const cp = ch.codePointAt(0);
     const info = classify(cp);
     if (info && categories.has(info.category)) {
-      hits.push({ index: i, line: line, column: col, char: ch,
-                  codepoint: cp,
-                  codepointHex: "U+" + cp.toString(16).toUpperCase()
-                    .padStart(4, "0"),
-                  name: info.name, category: info.category,
-                  note: note(chars, i, cp) });
+      total += 1;
+      if (maxHits && hits.length >= maxHits) {
+        capped = true;
+      } else {
+        hits.push({ index: i, line: line, column: col, char: ch,
+                    codepoint: cp,
+                    codepointHex: "U+" + cp.toString(16).toUpperCase()
+                      .padStart(4, "0"),
+                    name: info.name, category: info.category,
+                    note: note(chars, i, cp) });
+      }
     }
     if (ch === "\n") { line += 1; col = 0; }
   }
-  return hits;
+  return { hits: hits, total: total, capped: capped };
 }
 
 function stripHidden(text, categories) {

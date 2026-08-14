@@ -850,5 +850,60 @@ class TestBoundedFileRead(unittest.TestCase):
                     m.read_source(f, max_bytes=1000)
 
 
+class TestChangelogRendering(unittest.TestCase):
+    """The patch-notes page is generated from CHANGELOG.md at build time."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, os.path.join(os.path.dirname(SCRIPT), "tools"))
+        import build_web
+        cls.bw = build_web
+
+    def test_markup_in_the_changelog_cannot_inject_html(self):
+        # Escaping must happen before formatting, or a changelog entry could
+        # put live markup on a public page.
+        html = self.bw.changelog_html("## 1.0\n- <script>alert(1)</script>\n")
+        self.assertNotIn("<script>", html)
+        self.assertIn("&lt;script&gt;", html)
+
+    def test_inline_formatting(self):
+        html = self.bw.changelog_html(
+            "## 1.0\n- **bold** and `code` and *it*\n")
+        self.assertIn("<strong>bold</strong>", html)
+        self.assertIn("<code>code</code>", html)
+        self.assertIn("<em>it</em>", html)
+
+    def test_asterisks_inside_code_stay_literal(self):
+        # A flag like `--strip` must not be eaten by the emphasis pass.
+        html = self.bw.changelog_html("## 1.0\n- `a*b*c` stays\n")
+        self.assertIn("<code>a*b*c</code>", html)
+        self.assertNotIn("<em>", html)
+
+    def test_wrapped_list_items_are_joined(self):
+        html = self.bw.changelog_html(
+            "## 1.0\n- first line\n  continued here\n")
+        self.assertIn("first line continued here", html)
+        self.assertEqual(html.count("<li>"), 1)
+
+    def test_breaking_sections_are_flagged(self):
+        html = self.bw.changelog_html("## 2.0\n### Changed (breaking)\n- x\n")
+        self.assertIn("tagline danger", html)
+
+    def test_sections_are_balanced(self):
+        html = self.bw.changelog_html("## 2.0\n- a\n\n## 1.0\n- b\n")
+        self.assertEqual(html.count("<section"), html.count("</section>"))
+        self.assertEqual(html.count("<section"), 2)
+
+    def test_rendered_page_leaks_no_contact_or_session_data(self):
+        # The public page must never carry an address, a URL, or the commit
+        # trailers git history holds. Generated from CHANGELOG.md only.
+        with open(os.path.join(os.path.dirname(SCRIPT), "CHANGELOG.md"),
+                  encoding="utf-8") as fh:
+            body = self.bw.changelog_html(fh.read())
+        for needle in ("@", "http", "session_", "Co-Authored", "noreply"):
+            self.assertNotIn(needle, body,
+                             f"{needle!r} reached the public patch notes")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,57 @@
 # Changelog
 
+## 2.1.0
+A visual and functional overhaul of the browser build. The scanner engine is
+untouched — the Python/JavaScript parity suite passes unchanged — so this is
+presentation, ergonomics, and deployment only.
+
+### Added
+- **Redesigned interface.** A translucent, layered treatment with an adaptive
+  light and dark palette, a manual theme switch that overrides the system
+  setting, and restrained motion: spring-eased controls, a staggered result
+  reveal, and a counting verdict figure.
+- **Severity, surfaced.** The 2.0.0 severity model is now visible in the
+  browser: colour-coded chips, a proportional severity bar, and a **Suspicious
+  only** switch that applies the same `--min-severity medium` scope as the CLI,
+  so a conservative clean will not break emoji sequences.
+- **Drag and drop a text file** onto the page, or pick one. Read locally with
+  FileReader; the file never leaves the machine.
+- **Command palette** on `⌘K` / `Ctrl-K`, plus `⌘↵` to scan and `Esc` to clear.
+- **Before / after view** comparing the original with the cleaned text.
+- **Export report** writes the findings to JSON locally, via a Blob. No upload.
+- **Patch notes page** at `web/changelog.html`, generated from `CHANGELOG.md` by
+  `tools/build_web.py` and gated in CI like the rest of the web build. It is
+  generated from that file alone, never from git history, whose commit trailers
+  carry addresses and session URLs that do not belong on a public page. A test
+  asserts the rendered page contains no address, URL, or commit trailer.
+- **Visitor counter, counted on the server.** `web/api/index.js` substitutes the
+  count into the HTML before it is sent, so the browser makes no extra request
+  and `connect-src 'none'` still holds. A single integer is stored: no IP
+  address, user agent, per-visitor row, or timestamp. If the datastore is
+  unconfigured or unreachable the page is served exactly as normal with the
+  counter absent, so it can never take the site down.
+
+### Fixed
+- **The security headers the meta CSP cannot carry are now sent for real.**
+  `web/vercel.json` sets `Content-Security-Policy: frame-ancestors 'none'`,
+  which is ignored in a `<meta>` element and was therefore providing no
+  clickjacking protection at all on the hosted copy, plus
+  `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, and the
+  cross-origin isolation headers. This closes the last audit finding that could
+  only be fixed at the deployment layer.
+- **Keyboard focus was invisible on the new switches.** Their real checkbox is
+  visually hidden, so the focus ring was being drawn on an element nobody could
+  see. Found by an automated browser pass, not by eye.
+- **Content could scroll underneath the sticky header** and become unclickable;
+  the document now reserves scroll padding for it.
+- Browser copy said "five categories" where the implementation has six, and
+  still stated a vendor watermark attribution as settled fact. Both were
+  corrected in the README in 2.0.0 but missed in the page itself.
+
+### Changed
+- The CI staleness gate now diffs the whole `web/` directory rather than
+  `index.html` alone, so a stale generated patch-notes page fails the build.
+
 ## 2.0.0
 Completes the external engineering audit backlog: the remaining product,
 forensic, and polish items on top of the 1.7.0 hardening pass. Major version

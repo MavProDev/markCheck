@@ -850,6 +850,42 @@ class TestBoundedFileRead(unittest.TestCase):
                     m.read_source(f, max_bytes=1000)
 
 
+class TestFrozenDigitTable(unittest.TestCase):
+    """The digit table is pinned, not read from the interpreter.
+
+    str.isdigit() gains code points with each Unicode release. Deriving the
+    table at runtime made the generated browser build differ per build machine
+    and broke the CI staleness gate, so it is frozen like the default-ignorable
+    data. These tests are the guard that it stays honest.
+    """
+
+    def test_ranges_are_sorted_and_disjoint(self):
+        prev_hi = -1
+        for lo, hi in m._DIGIT_RANGES:
+            self.assertLessEqual(lo, hi)
+            self.assertGreater(lo, prev_hi + 1, f"adjacent/overlap at {lo:X}")
+            prev_hi = hi
+
+    def test_matches_this_interpreter_for_everything_it_knows(self):
+        # The frozen table is pinned at a Unicode version that may be newer
+        # than the running Python, so it may be a superset. It must never be a
+        # subset: anything this interpreter calls a digit has to be in it.
+        missing = [cp for cp in range(0x110000)
+                   if chr(cp).isdigit() and not m._is_digit(chr(cp))]
+        self.assertEqual(missing, [], "frozen digit table is behind this "
+                                      "Python; regenerate and bump it")
+
+    def test_known_edges(self):
+        self.assertTrue(m._is_digit("2"))        # Nd
+        self.assertTrue(m._is_digit("²"))   # superscript two: No, is digit
+        self.assertFalse(m._is_digit("¼"))  # one quarter: No, not a digit
+        self.assertFalse(m._is_digit(""))
+
+    def test_note_uses_the_frozen_table(self):
+        h = m.scan("10 000", ALL).hits[0]
+        self.assertIn("digit grouping", h["note"])
+
+
 class TestChangelogRendering(unittest.TestCase):
     """The patch-notes page is generated from CHANGELOG.md at build time."""
 

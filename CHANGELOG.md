@@ -32,6 +32,16 @@ presentation, ergonomics, and deployment only.
   counter absent, so it can never take the site down.
 
 ### Fixed
+- **The browser build was not reproducible across Python versions.** The digit
+  table added in 2.0.0 was derived by asking the running interpreter which code
+  points `str.isdigit()` accepts, and that set grows with each Unicode release:
+  a machine on Unicode 15.0 emitted two ranges (Kawi and Nag Mundari digits)
+  that a machine on 14.0 did not, so the committed page depended on who built
+  it and the CI staleness gate failed. The table is now frozen at the pinned
+  Unicode version alongside the default-ignorable data, and `_note` reads from
+  it rather than from `str.isdigit()`, so the CLI and the browser agree on
+  every interpreter. A test asserts the frozen table is never behind the
+  running Python.
 - **The security headers the meta CSP cannot carry are now sent for real.**
   `web/vercel.json` sets `Content-Security-Policy: frame-ancestors 'none'`,
   which is ignored in a `<meta>` element and was therefore providing no

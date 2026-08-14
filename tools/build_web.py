@@ -33,13 +33,15 @@ def _ranges(codepoints):
 
 
 def digit_ranges():
-    """Every code point where Python's str.isdigit() is True.
+    """The frozen digit table markcheck._note uses.
 
-    Generated from the interpreter rather than approximated in JavaScript with
-    Unicode general categories, so the browser's advisory digit-grouping note
-    matches markcheck.py exactly (see _note).
+    Emitted from the module constant rather than derived from the running
+    interpreter. str.isdigit() gains code points with each Unicode release, so
+    generating it here would make the committed build differ depending on which
+    Python built it, and the CI staleness gate would fail on a machine one
+    Unicode version ahead of the last person to run this.
     """
-    return _ranges(cp for cp in range(0x110000) if chr(cp).isdigit())
+    return [list(r) for r in m._DIGIT_RANGES]
 
 
 def tables():

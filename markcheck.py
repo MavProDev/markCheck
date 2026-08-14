@@ -20,15 +20,15 @@ It is source-agnostic. There is no allow/deny list tied to any vendor.
 from __future__ import annotations
 
 import argparse
-import bisect
 import json
 import os
+import signal
 import sys
 import tempfile
 import unicodedata
 from collections import Counter, namedtuple
 
-__version__ = "1.6.0"
+__version__ = "2.1.0"
 
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024  # 100 MB
 DEFAULT_MAX_HITS = 200_000
@@ -55,7 +55,25 @@ CATEGORIES = {
                   "behind the 2025 NNBSP fingerprint reports. Common in "
                   "typeset and word-processor text; --exclude whitespace "
                   "to skip.",
+    "default-ignorable": "OPT-IN. Every remaining Unicode "
+                         "Default_Ignorable_Code_Point not covered above, "
+                         "including reserved ranges. Off by default because "
+                         "it is noisy; enable with "
+                         "--include-default-ignorables for forensic work.",
 }
+
+# The curated, low-noise taxonomy. "default-ignorable" is deliberately not a
+# member: it is opt-in, so the default scan keeps its signal-to-noise ratio.
+DEFAULT_CATEGORIES = tuple(c for c in CATEGORIES if c != "default-ignorable")
+
+# Ordered least to most alarming.
+SEVERITIES = ("info", "low", "medium", "high")
+_SEVERITY_RANK = {name: i for i, name in enumerate(SEVERITIES)}
+
+# The bidi members that reorder rendered text (Trojan-Source, CVE-2021-42574),
+# as opposed to the marks, which merely set direction for a single character.
+_HIGH_BIDI = (frozenset(range(0x202A, 0x202F))
+              | frozenset(range(0x2066, 0x206A)))
 
 _SINGLE = {
     0x200B: ("ZERO WIDTH SPACE", "zero-width"),
@@ -139,14 +157,126 @@ _register_deprecated_format()
 _PICTO_RANGES = ((0x1F000, 0x1FAFF), (0x2600, 0x27BF),
                  (0x1F1E6, 0x1F1FF), (0x2B00, 0x2BFF), (0xFE0F, 0xFE0F))
 
+# Named explicitly rather than via unicodedata.name(). U+180F was added in
+# Unicode 14.0, so on a Python that bundles an older UCD (3.9 and 3.10 ship
+# Unicode 13.0) the name lookup would miss and fall back to a generic label,
+# making the reported name depend on the interpreter version and diverge from
+# the browser build, which hardcodes these names.
+_MONGOLIAN_FVS = {
+    0x180B: "MONGOLIAN FREE VARIATION SELECTOR ONE",
+    0x180C: "MONGOLIAN FREE VARIATION SELECTOR TWO",
+    0x180D: "MONGOLIAN FREE VARIATION SELECTOR THREE",
+    0x180F: "MONGOLIAN FREE VARIATION SELECTOR FOUR",
+}
+
+
+# Unicode Default_Ignorable_Code_Point, frozen at the version below and
+# transcribed from DerivedCoreProperties.txt. Deliberately independent of the
+# running interpreter's unicodedata: this table is the specification oracle the
+# curated taxonomy is checked against, so it must not move when Python moves.
+# Bumping it is an explicit decision, and the conformance test says what
+# changed.
+UNICODE_VERSION = "15.1.0"
+DEFAULT_IGNORABLE = (
+    (0x00AD, 0x00AD), (0x034F, 0x034F), (0x061C, 0x061C),
+    (0x115F, 0x1160), (0x17B4, 0x17B5), (0x180B, 0x180F),
+    (0x200B, 0x200F), (0x202A, 0x202E), (0x2060, 0x206F),
+    (0x3164, 0x3164), (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF),
+    (0xFFA0, 0xFFA0), (0xFFF0, 0xFFF8), (0x1BCA0, 0x1BCA3),
+    (0x1D173, 0x1D17A), (0xE0000, 0xE0FFF),
+)
+
+# A single stable name for this category. Deriving names from unicodedata here
+# would make the report depend on the interpreter's Unicode version (and drift
+# from the generated browser build); the code point is always shown alongside.
+_DEFAULT_IGNORABLE_NAME = "DEFAULT IGNORABLE CODE POINT"
+
+
+# Code points where Python's str.isdigit() is True, frozen at UNICODE_VERSION.
+# Frozen rather than read from the interpreter for the same reason as the table
+# above: str.isdigit() gains code points with each Unicode release, so deriving
+# this at runtime would make the advisory note below depend on which Python is
+# running, and would make the generated browser build differ per build machine.
+_DIGIT_RANGES = (
+    (0x0030, 0x0039), (0x00B2, 0x00B3), (0x00B9, 0x00B9), (0x0660, 0x0669),
+    (0x06F0, 0x06F9), (0x07C0, 0x07C9), (0x0966, 0x096F), (0x09E6, 0x09EF),
+    (0x0A66, 0x0A6F), (0x0AE6, 0x0AEF), (0x0B66, 0x0B6F), (0x0BE6, 0x0BEF),
+    (0x0C66, 0x0C6F), (0x0CE6, 0x0CEF), (0x0D66, 0x0D6F), (0x0DE6, 0x0DEF),
+    (0x0E50, 0x0E59), (0x0ED0, 0x0ED9), (0x0F20, 0x0F29), (0x1040, 0x1049),
+    (0x1090, 0x1099), (0x1369, 0x1371), (0x17E0, 0x17E9), (0x1810, 0x1819),
+    (0x1946, 0x194F), (0x19D0, 0x19DA), (0x1A80, 0x1A89), (0x1A90, 0x1A99),
+    (0x1B50, 0x1B59), (0x1BB0, 0x1BB9), (0x1C40, 0x1C49), (0x1C50, 0x1C59),
+    (0x2070, 0x2070), (0x2074, 0x2079), (0x2080, 0x2089), (0x2460, 0x2468),
+    (0x2474, 0x247C), (0x2488, 0x2490), (0x24EA, 0x24EA), (0x24F5, 0x24FD),
+    (0x24FF, 0x24FF), (0x2776, 0x277E), (0x2780, 0x2788), (0x278A, 0x2792),
+    (0xA620, 0xA629), (0xA8D0, 0xA8D9), (0xA900, 0xA909), (0xA9D0, 0xA9D9),
+    (0xA9F0, 0xA9F9), (0xAA50, 0xAA59), (0xABF0, 0xABF9), (0xFF10, 0xFF19),
+    (0x104A0, 0x104A9), (0x10A40, 0x10A43), (0x10D30, 0x10D39),
+    (0x10E60, 0x10E68), (0x11052, 0x1105A), (0x11066, 0x1106F),
+    (0x110F0, 0x110F9), (0x11136, 0x1113F), (0x111D0, 0x111D9),
+    (0x112F0, 0x112F9), (0x11450, 0x11459), (0x114D0, 0x114D9),
+    (0x11650, 0x11659), (0x116C0, 0x116C9), (0x11730, 0x11739),
+    (0x118E0, 0x118E9), (0x11950, 0x11959), (0x11C50, 0x11C59),
+    (0x11D50, 0x11D59), (0x11DA0, 0x11DA9), (0x11F50, 0x11F59),
+    (0x16A60, 0x16A69), (0x16AC0, 0x16AC9), (0x16B50, 0x16B59),
+    (0x1D7CE, 0x1D7FF), (0x1E140, 0x1E149), (0x1E2F0, 0x1E2F9),
+    (0x1E4F0, 0x1E4F9), (0x1E950, 0x1E959), (0x1F100, 0x1F10A),
+    (0x1FBF0, 0x1FBF9)
+)
+
+
+def _is_digit(ch):
+    """str.isdigit() against the frozen table, so every runtime agrees."""
+    if not ch:
+        return False
+    cp = ord(ch)
+    lo, hi = 0, len(_DIGIT_RANGES) - 1
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        start, end = _DIGIT_RANGES[mid]
+        if cp < start:
+            hi = mid - 1
+        elif cp > end:
+            lo = mid + 1
+        else:
+            return True
+    return False
+
+
+def _default_ignorable(cp):
+    return any(lo <= cp <= hi for lo, hi in DEFAULT_IGNORABLE)
+
+
+def severity(cp, category, note):
+    """Rate a hit: info, low, medium, or high.
+
+    Detection is unchanged by this; severity only lets a caller filter. An
+    annotated hit is informational by definition, because _note only fires on
+    the conventional, likely-legitimate uses.
+    """
+    if note:
+        return "info"
+    if category == "tag" or cp in _HIGH_BIDI:
+        return "high"
+    if category == "whitespace":
+        return "low"
+    if category == "default-ignorable":
+        return "low"
+    return "medium"
+
 
 def classify(cp):
     """Return (name, category) for a tracked code point, else None."""
     hit = _SINGLE.get(cp)
     if hit is not None:
         return hit
-    if 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF \
-            or 0x180B <= cp <= 0x180D:
+    # U+180E (MONGOLIAN VOWEL SEPARATOR) sits between the free variation
+    # selectors but is not one; it is handled by _SINGLE above, which classify
+    # checks first, so it never reaches this table.
+    fvs = _MONGOLIAN_FVS.get(cp)
+    if fvs is not None:
+        return (fvs, "variation-selector")
+    if 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF:
         return (unicodedata.name(chr(cp), "VARIATION SELECTOR"),
                 "variation-selector")
     if cp == 0xE0001 or 0xE0020 <= cp <= 0xE007F:
@@ -154,6 +284,11 @@ def classify(cp):
     name = _WHITESPACE.get(cp)
     if name is not None:
         return (name, "whitespace")
+    # Everything else the specification calls default-ignorable. This arm is
+    # reached only when the caller put the opt-in category in scope, since the
+    # default category set excludes it.
+    if _default_ignorable(cp):
+        return (_DEFAULT_IGNORABLE_NAME, "default-ignorable")
     return None
 
 
@@ -181,12 +316,12 @@ def _note(text, i, cp):
         # French spacing, which is exactly where a watermark would sit.
         if (nxt and nxt in ":;!?\u00bb%") or prev == "\u00ab":
             return "French-style punctuation spacing (likely legitimate)"
-        if prev.isdigit() and nxt.isdigit():
+        if _is_digit(prev) and _is_digit(nxt):
             return "digit grouping (likely legitimate)"
     return ""
 
 
-def scan(text, categories, max_hits=0):
+def scan(text, categories, max_hits=0, min_severity="info"):
     """Scan text and return ScanResult(hits, total, capped).
 
     total is the true count of tracked characters in scope. When max_hits > 0
@@ -194,50 +329,82 @@ def scan(text, categories, max_hits=0):
     is True; total still reflects the full count. This bounds memory on
     pathological input (a file that is mostly hidden characters) while keeping
     the reported count honest.
+
+    min_severity narrows the scope: a hit rated below it is not counted, not
+    stored, and not reported. Scope, not presentation, so the caller's exit
+    status and any subsequent strip agree with what was shown.
     """
-    newlines = [j for j, ch in enumerate(text) if ch == "\n"]
+    threshold = _SEVERITY_RANK[min_severity]
     hits = []
     total = 0
     capped = False
+    line = 1
+    col = 0
     for i, ch in enumerate(text):
-        info = classify(ord(ch))
-        if info is None or info[1] not in categories:
-            continue
-        total += 1
-        if max_hits and len(hits) >= max_hits:
-            capped = True
-            continue
-        name, category = info
-        line = bisect.bisect_right(newlines, i) + 1
-        col = i - (newlines[line - 2] if line > 1 else -1)
-        hits.append({
-            "index": i, "line": line, "column": col,
-            "codepoint": ord(ch), "codepoint_hex": f"U+{ord(ch):04X}",
-            "name": name, "category": category,
-            "note": _note(text, i, ord(ch)),
-        })
+        col += 1
+        cp = ord(ch)
+        info = classify(cp)
+        if info is not None and info[1] in categories:
+            name, category = info
+            note = _note(text, i, cp)
+            level = severity(cp, category, note)
+            if _SEVERITY_RANK[level] >= threshold:
+                total += 1
+                if max_hits and len(hits) >= max_hits:
+                    capped = True
+                else:
+                    hits.append({
+                        "index": i, "line": line, "column": col,
+                        "codepoint": cp, "codepoint_hex": f"U+{cp:04X}",
+                        "name": name, "category": category,
+                        "severity": level, "note": note,
+                    })
+        if ch == "\n":
+            line += 1
+            col = 0
     return ScanResult(hits, total, capped)
 
 
-def strip_hidden(text, categories):
+def strip_hidden(text, categories, min_severity="info"):
     """Remove tracked characters in scope; normalize, not delete, whitespace.
 
     Zero-width and format characters are deleted. Whitespace-category hits
     are replaced (space variants with an ASCII space, line and paragraph
     separators with a newline) so that stripping cannot join two words.
+
+    min_severity matches scan(): a hit rated below it is left alone, so
+    --min-severity turns --strip into a conservative cleanup that removes only
+    what was actually reported.
     """
+    threshold = _SEVERITY_RANK[min_severity]
     out = []
-    for ch in text:
-        c = classify(ord(ch))
+    for i, ch in enumerate(text):
+        cp = ord(ch)
+        c = classify(cp)
         if c is None or c[1] not in categories:
             out.append(ch)
-        else:
-            out.append(_STRIP_REPLACEMENT.get(ord(ch), ""))
+            continue
+        # Only pay for note/severity when a filter is actually in force.
+        if threshold:
+            level = severity(cp, c[1], _note(text, i, cp))
+            if _SEVERITY_RANK[level] < threshold:
+                out.append(ch)
+                continue
+        out.append(_STRIP_REPLACEMENT.get(cp, ""))
     return "".join(out)
 
 
 class SourceError(Exception):
     """Raised when a source cannot be read or decoded as text."""
+
+
+class OutputError(Exception):
+    """Raised when a requested write cannot be performed.
+
+    Distinct from OSError: it covers refusals that are policy, not I/O failure,
+    such as declining to clobber an existing backup. Both map to exit code 2 so
+    a script can tell the requested cleanup did not happen.
+    """
 
 
 def _decode(raw, label):
@@ -249,19 +416,25 @@ def _decode(raw, label):
     the very bytes we are inspecting, so non-Unicode input is a clear error.
 
     The encoding is returned so that --strip can write a cleaned file back in
-    the encoding it arrived in. Re-encoding UTF-16/UTF-32 restores the BOM the
-    decoder consumed, so the round trip is byte-faithful apart from the
-    characters markcheck was asked to remove.
+    the encoding it arrived in. The returned label records the exact byte order
+    (utf-16-le/-be, utf-32-le/-be), not just the generic family: the generic
+    codec re-encodes in the platform's native byte order, which would silently
+    flip a big-endian document to little-endian on the way out. write_text
+    restores the original BOM and byte order from this label, so the round trip
+    is byte-faithful apart from the characters markcheck was asked to remove.
     """
-    for bom, enc in ((b"\xff\xfe\x00\x00", "utf-32"),
-                     (b"\x00\x00\xfe\xff", "utf-32"),
-                     (b"\xff\xfe", "utf-16"),
-                     (b"\xfe\xff", "utf-16")):
+    for bom, generic, precise in (
+            (b"\xff\xfe\x00\x00", "utf-32", "utf-32-le"),
+            (b"\x00\x00\xfe\xff", "utf-32", "utf-32-be"),
+            (b"\xff\xfe", "utf-16", "utf-16-le"),
+            (b"\xfe\xff", "utf-16", "utf-16-be")):
         if raw.startswith(bom):
             try:
-                return raw.decode(enc), enc
+                # Decode with the generic codec so it consumes the BOM and
+                # reads byte order from it; keep the precise label for writing.
+                return raw.decode(generic), precise
             except UnicodeDecodeError as exc:
-                raise SourceError(f"{label}: {enc} decode failed: {exc}")
+                raise SourceError(f"{label}: {generic} decode failed: {exc}")
     try:
         return raw.decode("utf-8"), "utf-8"
     except UnicodeDecodeError as exc:
@@ -300,26 +473,77 @@ def read_source(path, max_bytes=0):
                           f"({max_bytes}); pass --max-bytes 0 to allow")
     try:
         with open(path, "rb") as fh:
-            raw = fh.read()
+            if max_bytes:
+                # getsize above is only a precheck: the file can grow between
+                # the stat and the read, and special files (pipes, /proc) make
+                # size a poor proxy for read volume. Enforce the limit at the
+                # actual read boundary, matching the stdin path.
+                raw = fh.read(max_bytes + 1)
+                if len(raw) > max_bytes:
+                    raise SourceError(
+                        f"{path}: input exceeds --max-bytes ({max_bytes}); "
+                        f"pass --max-bytes 0 to allow")
+            else:
+                raw = fh.read()
     except OSError as exc:
         raise SourceError(f"{path}: {exc.strerror or exc}")
     text, encoding = _decode(raw, path)
     return text, path, encoding
 
 
-def write_text(path, text, encoding="utf-8", preserve_mode_from=None):
-    """Write text to path atomically and durably in the given encoding.
+_ENCODING_BOM = {
+    "utf-16-le": b"\xff\xfe",
+    "utf-16-be": b"\xfe\xff",
+    "utf-32-le": b"\xff\xfe\x00\x00",
+    "utf-32-be": b"\x00\x00\xfe\xff",
+}
+
+
+def _encode_with_bom(text, encoding):
+    """Encode text, restoring the exact BOM/byte order that _decode recorded.
+
+    The endian-specific codecs (utf-16-le, ...) do not emit a BOM, so the
+    original one is prepended here. This preserves the source byte order
+    exactly, unlike the generic utf-16/utf-32 codecs which write native order.
+    """
+    return _ENCODING_BOM.get(encoding, b"") + text.encode(encoding)
+
+
+def _fsync_dir(directory):
+    """Flush a directory entry so the rename survives a crash. Best effort.
+
+    Only meaningful on POSIX: Windows cannot open a directory as a file, and
+    a failure here costs durability, never correctness, so it stays quiet.
+    """
+    try:
+        fd = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
+def _atomic_write(path, data, preserve_mode_from=None):
+    """Write bytes to path atomically and durably.
 
     Writes to a unique temp file in the same directory, fsyncs it, then
-    os.replace()s it into place (atomic on the same filesystem). If
-    preserve_mode_from is a path, the destination inherits that file's
-    permission bits, so cleaning a 0600 file does not widen it to 0644.
+    os.replace()s it into place (atomic on the same filesystem), then fsyncs
+    the directory so the rename itself is durable. If preserve_mode_from is a
+    path, the destination inherits that file's permission bits, so cleaning a
+    0600 file does not widen it to 0644.
+
+    Permission bits are preserved deliberately. Ownership, timestamps, ACLs,
+    and extended attributes are not; see the README for that boundary.
     """
     directory = os.path.dirname(os.path.abspath(path))
     fd, tmp = tempfile.mkstemp(prefix=".markcheck-", dir=directory)
     try:
-        with os.fdopen(fd, "w", encoding=encoding, newline="") as fh:
-            fh.write(text)
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
             fh.flush()
             os.fsync(fh.fileno())
         if preserve_mode_from is not None:
@@ -328,6 +552,7 @@ def write_text(path, text, encoding="utf-8", preserve_mode_from=None):
             except OSError:
                 pass
         os.replace(tmp, path)
+        _fsync_dir(directory)
     except BaseException:
         try:
             os.remove(tmp)
@@ -336,34 +561,77 @@ def write_text(path, text, encoding="utf-8", preserve_mode_from=None):
         raise
 
 
-def report_text(label, text, result, show):
+def write_text(path, text, encoding="utf-8", preserve_mode_from=None):
+    """Write text to path atomically and durably, restoring any source BOM."""
+    _atomic_write(path, _encode_with_bom(text, encoding), preserve_mode_from)
+
+
+def copy_bytes(src, dst, preserve_mode_from=None, exclusive=False):
+    """Copy src's raw bytes to dst atomically, so a backup is byte-for-byte.
+
+    Re-encoding the decoded text cannot round-trip a UTF-16/UTF-32 big-endian
+    document faithfully (native byte order leaks in); a raw copy makes the .bak
+    an exact image of the original bytes regardless of encoding.
+
+    With exclusive=True the destination is first reserved with an atomic
+    exclusive create, so two concurrent runs cannot both conclude that no
+    backup exists and then race to write one. Raises FileExistsError if the
+    reservation is already taken. The reservation is released if the copy
+    fails, so a retry is not blocked by a file this call created.
+    """
+    with open(src, "rb") as fh:
+        data = fh.read()
+    if not exclusive:
+        _atomic_write(dst, data, preserve_mode_from)
+        return
+    # Reserve the name atomically, then fill it via the usual temp-and-replace
+    # so the contents land atomically too.
+    os.close(os.open(dst, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+    try:
+        _atomic_write(dst, data, preserve_mode_from)
+    except BaseException:
+        try:
+            os.remove(dst)
+        except OSError:
+            pass
+        raise
+
+
+def report_text(label, text, result, show, file=None):
+    out = file if file is not None else sys.stdout
     hits, total = result.hits, result.total
-    print(f"\nSource: {label}")
-    print(f"Characters: {len(text)}")
-    print(f"Hidden-character hits: {total}")
+    print(f"\nSource: {label}", file=out)
+    print(f"Characters: {len(text)}", file=out)
+    print(f"Hidden-character hits: {total}", file=out)
     if total == 0:
-        print("  CLEAN. No tracked hidden characters.")
+        print("  CLEAN. No tracked hidden characters.", file=out)
         print("  Note: byte inspection cannot detect statistical "
-              "(token-level) watermarks.")
+              "(token-level) watermarks.", file=out)
         return
     if result.capped:
         print(f"  (list capped at {len(hits)} to bound memory; counts and "
-              f"summaries below cover those {len(hits)} of {total})")
+              f"summaries below cover those {len(hits)} of {total})", file=out)
     by_cat = Counter(h["category"] for h in hits)
     cats = ", ".join(f"{c}={n}" for c, n in by_cat.most_common())
-    print("  By category: " + cats)
-    print("  By character:")
+    print("  By category: " + cats, file=out)
+    by_sev = Counter(h["severity"] for h in hits)
+    sevs = ", ".join(f"{s}={by_sev[s]}"
+                     for s in reversed(SEVERITIES) if by_sev[s])
+    print("  By severity: " + sevs, file=out)
+    print("  By character:", file=out)
     for (cp, name), n in Counter((h["codepoint"], h["name"])
                                  for h in hits).most_common():
-        print(f"    U+{cp:04X}  {name:<34} x{n}")
+        print(f"    U+{cp:04X}  {name:<34} x{n}", file=out)
     show = max(show, 0)
-    print(f"  Locations (up to {show}):")
+    print(f"  Locations (up to {show}):", file=out)
     for h in hits[:show]:
         tail = f"  {h['note']}" if h["note"] else ""
         print(f"    line {h['line']:>4} col {h['column']:>4}  "
-              f"{h['codepoint_hex']} {h['name']}{tail}")
+              f"[{h['severity']:<6}] {h['codepoint_hex']} "
+              f"{h['name']}{tail}", file=out)
     if len(hits) > show:
-        print(f"    ...{len(hits) - show} more (use --show N or --json)")
+        print(f"    ...{len(hits) - show} more (use --show N or --json)",
+              file=out)
 
 
 def _clean_path(path):
@@ -376,15 +644,21 @@ def _clean_path(path):
     return os.path.join(head, tail)
 
 
-def resolve_categories(only, exclude):
-    """Turn --only/--exclude strings into a validated category set."""
+def resolve_categories(only, exclude, include_default_ignorables=False):
+    """Turn --only/--exclude strings into a validated category set.
+
+    The base set is the curated taxonomy; the opt-in default-ignorable category
+    joins it only when asked for, or when named explicitly in --only.
+    """
     def parse(s):
         return [x.strip() for x in (s or "").split(",") if x.strip()]
     only_list, exclude_list = parse(only), parse(exclude)
     for name in only_list + exclude_list:
         if name not in CATEGORIES:
             raise ValueError(name)
-    base = set(only_list) if only_list else set(CATEGORIES)
+    base = set(only_list) if only_list else set(DEFAULT_CATEGORIES)
+    if include_default_ignorables:
+        base.add("default-ignorable")
     return base - set(exclude_list)
 
 
@@ -406,11 +680,24 @@ def build_parser():
     p.add_argument("--stdout", action="store_true",
                    help="with --strip on stdin, write cleaned text to stdout")
     p.add_argument("--json", action="store_true", help="emit JSON")
+    p.add_argument("--force", action="store_true",
+                   help="with --strip, overwrite an existing FILE.clean.EXT")
     p.add_argument("--only", metavar="CATS",
                    help="comma-separated categories to scan "
                         "(e.g. zero-width,bidi)")
     p.add_argument("--exclude", metavar="CATS", default="",
                    help="comma-separated categories to skip")
+    p.add_argument("--min-severity", choices=SEVERITIES, default="info",
+                   metavar="LEVEL",
+                   help=f"report only hits at or above LEVEL "
+                        f"({', '.join(SEVERITIES)}; default info). Narrows "
+                        f"scope: --strip and the exit code follow it")
+    p.add_argument("--suspicious-only", action="store_true",
+                   help="shorthand for --min-severity medium: drop the "
+                        "annotated, likely-legitimate hits")
+    p.add_argument("--include-default-ignorables", action="store_true",
+                   help="also scan every remaining Unicode default-ignorable "
+                        "code point (noisy; for forensic use)")
     p.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES,
                    metavar="N",
                    help=f"refuse inputs larger than N bytes "
@@ -447,7 +734,7 @@ def _do_strip(path, text, cleaned, args, changed, encoding="utf-8"):
                 sys.stdout.write(cleaned)
             else:
                 sys.stdout.flush()
-                stream.write(cleaned.encode(encoding))
+                stream.write(_encode_with_bom(cleaned, encoding))
                 stream.flush()
             return None
         print(f"  stdin: changed {changed}; use --stdout to emit the cleaned "
@@ -460,15 +747,25 @@ def _do_strip(path, text, cleaned, args, changed, encoding="utf-8"):
         target = os.path.realpath(path)
         if not args.no_backup:
             backup = target + ".bak"
-            if os.path.exists(backup):
-                print(f"  refusing to overwrite existing backup {backup}; "
-                      f"move it or pass --no-backup", file=sys.stderr)
-                return None
-            write_text(backup, text, encoding, preserve_mode_from=target)
+            # A byte-for-byte copy of the original, not a re-encode of the
+            # decoded text, so the backup is a faithful image even for
+            # UTF-16/UTF-32 big-endian input. exclusive=True makes the
+            # "does a backup already exist" check atomic rather than a
+            # check-then-write race. --force does not apply here: the one
+            # backup protecting the original is worth an explicit move.
+            try:
+                copy_bytes(target, backup, preserve_mode_from=target,
+                           exclusive=True)
+            except FileExistsError:
+                raise OutputError(
+                    f"refusing to overwrite existing backup {backup}; "
+                    f"move it or pass --no-backup")
         write_text(target, cleaned, encoding, preserve_mode_from=target)
         return f"  Cleaned in place: {target} (changed {changed})" + (
             "" if args.no_backup else f", backup {target}.bak")
     out = _clean_path(path)
+    if os.path.exists(out) and not args.force:
+        raise OutputError(f"{out} already exists; pass --force to overwrite")
     write_text(out, cleaned, encoding)
     return f"  Cleaned copy: {out} (changed {changed})"
 
@@ -482,13 +779,15 @@ def main(argv=None):
         return 0
 
     try:
-        categories = resolve_categories(args.only, args.exclude)
+        categories = resolve_categories(args.only, args.exclude,
+                                        args.include_default_ignorables)
     except ValueError as exc:
         print(f"error: unknown category: {exc}", file=sys.stderr)
         return 2
     if not categories:
         print("error: no categories left to scan", file=sys.stderr)
         return 2
+    min_severity = ("medium" if args.suspicious_only else args.min_severity)
     if args.no_backup and not args.in_place:
         print("error: --no-backup only applies with --in-place",
               file=sys.stderr)
@@ -499,6 +798,13 @@ def main(argv=None):
     if args.stdout and not args.strip:
         print("error: --stdout only applies with --strip", file=sys.stderr)
         return 2
+    if args.json and args.stdout:
+        # Both want to own stdout: --stdout emits the cleaned document, --json
+        # emits a structured report. Interleaving them yields a stream that is
+        # neither valid JSON nor a clean document.
+        print("error: --json and --stdout are mutually exclusive",
+              file=sys.stderr)
+        return 2
     if args.stdout and [f for f in args.files if f != "-"]:
         print("error: --stdout applies to stdin only; for files use --strip "
               "(writes FILE.clean.EXT) or --strip --in-place",
@@ -507,6 +813,21 @@ def main(argv=None):
     if args.max_bytes < 0 or args.max_hits < 0:
         print("error: --max-bytes and --max-hits must be >= 0",
               file=sys.stderr)
+        return 2
+    if args.force and not args.strip:
+        print("error: --force only applies with --strip", file=sys.stderr)
+        return 2
+    if args.suspicious_only and args.min_severity != "info":
+        print("error: --suspicious-only and --min-severity conflict; "
+              "pass one", file=sys.stderr)
+        return 2
+    # in-place rewrites a file on disk; there is no file behind stdin.
+    if args.in_place and (not args.files or "-" in args.files):
+        print("error: --in-place needs a file argument; stdin has no file to "
+              "rewrite (use --stdout for a cleaned stream)", file=sys.stderr)
+        return 2
+    if args.files.count("-") > 1:
+        print("error: stdin ('-') can only be read once", file=sys.stderr)
         return 2
 
     if not args.files and sys.stdin.isatty():
@@ -527,7 +848,7 @@ def main(argv=None):
             had_error = True
             continue
 
-        result = scan(text, categories, args.max_hits)
+        result = scan(text, categories, args.max_hits, min_severity)
         any_hits = any_hits or bool(result.total)
         results.append({"source": label, "encoding": encoding,
                         "characters": len(text),
@@ -535,14 +856,19 @@ def main(argv=None):
                         "hits": result.hits})
 
         if not args.json:
-            report_text(label, text, result, args.show)
+            # In --stdout mode, stdout carries the cleaned document only, so
+            # the human report goes to stderr; a redirect then captures the
+            # cleaned bytes exactly, with nothing else mixed in.
+            report_text(label, text, result, args.show,
+                        file=sys.stderr if args.stdout else sys.stdout)
 
         if args.strip:
             try:
                 line = _do_strip(path, text,
-                                 strip_hidden(text, categories),
+                                 strip_hidden(text, categories,
+                                              min_severity),
                                  args, result.total, encoding)
-            except OSError as exc:
+            except (OSError, OutputError) as exc:
                 print(f"error: cannot write cleaned output for {label}: {exc}",
                       file=sys.stderr)
                 had_error = True
@@ -552,7 +878,9 @@ def main(argv=None):
 
     if args.json:
         json.dump({"version": __version__,
-                   "categories": sorted(categories), "results": results},
+                   "unicode_version": UNICODE_VERSION,
+                   "categories": sorted(categories),
+                   "min_severity": min_severity, "results": results},
                   sys.stdout, indent=2)
         sys.stdout.write("\n")
 
@@ -576,16 +904,35 @@ def _relax_stdio_errors():
             pass
 
 
+def _default_sigpipe():
+    """Die on SIGPIPE the way a Unix filter should.
+
+    Python installs an ignore handler and surfaces a BrokenPipeError instead.
+    Catching that and returning 0 was quiet but dishonest: `markcheck f | head`
+    reported success even when the scan had found hidden characters. Restoring
+    the default handler makes the process terminate on the signal (status 141),
+    which is what every other tool in a pipeline does. No-op on Windows, which
+    has no SIGPIPE.
+    """
+    handler = getattr(signal, "SIGPIPE", None)
+    if handler is not None:
+        signal.signal(handler, signal.SIG_DFL)
+
+
 def cli():
     _relax_stdio_errors()
+    _default_sigpipe()
     try:
         return main()
     except BrokenPipeError:
+        # Reachable on Windows, and on POSIX for a pipe that reports the error
+        # before the signal arrives. Exit 2: the output was truncated, so the
+        # run did not do what was asked.
         try:
             sys.stdout.close()
         except Exception:
             pass
-        return 0
+        return 2
     except KeyboardInterrupt:
         return 130
 

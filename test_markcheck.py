@@ -4,12 +4,14 @@ Covers the pure functions, the main() entry, real subprocess CLI invocation,
 encoding edge cases, --strip safety, and a randomized round-trip fuzzer.
 """
 import io
+import json
 import os
 import random
 import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from contextlib import redirect_stdout
 
 import markcheck as m
@@ -39,7 +41,7 @@ SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 TRACKED = sorted(
     list(m._SINGLE)
     + list(m._WHITESPACE)
-    + list(range(0x180B, 0x180E))
+    + list(range(0x180B, 0x180E)) + [0x180F]
     + list(range(0xFE00, 0xFE10))
     + [0xE0001] + list(range(0xE0020, 0xE0080))
 )
@@ -68,7 +70,9 @@ class TestClassify(unittest.TestCase):
 
 class TestScan(unittest.TestCase):
     def test_finds_one_of_each_category(self):
-        text = "a\u200bb\u00adc\u202ed\ufe0fe\U000e0041f\u202fg"
+        # U+2065 is a reserved default-ignorable: in scope only when the
+        # opt-in category is enabled, which ALL does here.
+        text = "a\u200bb\u00adc\u202ed\ufe0fe\U000e0041f\u202fg\u2065h"
         self.assertEqual({h["category"] for h in m.scan(text, ALL).hits}, ALL)
 
     def test_line_and_column(self):
@@ -171,13 +175,19 @@ class TestDecode(unittest.TestCase):
         self.assertEqual((text, enc), ("\ufeffhi", "utf-8"))
         self.assertIn("BOM", m.scan(text, ALL).hits[0]["note"])
 
-    def test_utf16_bom(self):
-        self.assertEqual(m._decode("hi\u200b".encode("utf-16"), "x"),
-                         ("hi\u200b", "utf-16"))
+    def test_utf16_bom_records_exact_byte_order(self):
+        # The label must record byte order, not just the family, so --strip
+        # can write the file back without flipping BE to native LE.
+        le = b"\xff\xfe" + "hi\u200b".encode("utf-16-le")
+        be = b"\xfe\xff" + "hi\u200b".encode("utf-16-be")
+        self.assertEqual(m._decode(le, "x"), ("hi\u200b", "utf-16-le"))
+        self.assertEqual(m._decode(be, "x"), ("hi\u200b", "utf-16-be"))
 
-    def test_utf32_bom(self):
-        self.assertEqual(m._decode("hi".encode("utf-32"), "x"),
-                         ("hi", "utf-32"))
+    def test_utf32_bom_records_exact_byte_order(self):
+        le = b"\xff\xfe\x00\x00" + "hi".encode("utf-32-le")
+        be = b"\x00\x00\xfe\xff" + "hi".encode("utf-32-be")
+        self.assertEqual(m._decode(le, "x"), ("hi", "utf-32-le"))
+        self.assertEqual(m._decode(be, "x"), ("hi", "utf-32-be"))
 
     def test_invalid_bytes_raise_sourceerror(self):
         with self.assertRaises(m.SourceError):
@@ -208,9 +218,11 @@ class TestMainInProcess(unittest.TestCase):
     def test_exit_codes(self):
         with tempfile.TemporaryDirectory() as d:
             f = os.path.join(d, "t.md")
-            open(f, "w", encoding="utf-8").write("clean text")
+            with open(f, "w", encoding="utf-8") as fh:
+                fh.write("clean text")
             self.assertEqual(self._run([f])[0], 0)
-            open(f, "w", encoding="utf-8").write("bad\u200btext")
+            with open(f, "w", encoding="utf-8") as fh:
+                fh.write("bad\u200btext")
             self.assertEqual(self._run([f])[0], 1)
             self.assertEqual(self._run([os.path.join(d, "nope")])[0], 2)
 
@@ -226,32 +238,41 @@ class TestMainInProcess(unittest.TestCase):
 
 
 class TestStripSafety(unittest.TestCase):
+    def _write(self, path, text, encoding="utf-8"):
+        with open(path, "w", encoding=encoding) as fh:
+            fh.write(text)
+
+    def _read(self, path, encoding="utf-8"):
+        with open(path, encoding=encoding) as fh:
+            return fh.read()
+
     def test_in_place_writes_backup(self):
         with tempfile.TemporaryDirectory() as d:
             f = os.path.join(d, "p.txt")
-            open(f, "w", encoding="utf-8").write("x\u200by")
+            self._write(f, "x\u200by")
             m.main([f, "--strip", "--in-place"])
-            self.assertEqual(open(f, encoding="utf-8").read(), "xy")
-            self.assertEqual(open(f + ".bak", encoding="utf-8").read(),
-                             "x\u200by")
+            self.assertEqual(self._read(f), "xy")
+            self.assertEqual(self._read(f + ".bak"), "x\u200by")
 
     def test_in_place_refuses_to_clobber_backup(self):
         with tempfile.TemporaryDirectory() as d:
             f = os.path.join(d, "p.txt")
-            open(f, "w", encoding="utf-8").write("x\u200by")
-            open(f + ".bak", "w", encoding="utf-8").write("PRECIOUS")
-            m.main([f, "--strip", "--in-place"])
+            self._write(f, "x\u200by")
+            self._write(f + ".bak", "PRECIOUS")
+            with redirect_stdout(io.StringIO()):
+                code = m.main([f, "--strip", "--in-place"])
+            # a refused write is an error, not a silent no-op: exit code 2
+            self.assertEqual(code, 2)
             # backup untouched, original NOT stripped
-            self.assertEqual(open(f + ".bak", encoding="utf-8").read(),
-                             "PRECIOUS")
-            self.assertEqual(open(f, encoding="utf-8").read(), "x\u200by")
+            self.assertEqual(self._read(f + ".bak"), "PRECIOUS")
+            self.assertEqual(self._read(f), "x\u200by")
 
     def test_in_place_preserves_mode(self):
         if os.name != "posix":
             self.skipTest("POSIX mode bits")
         with tempfile.TemporaryDirectory() as d:
             f = os.path.join(d, "s.txt")
-            open(f, "w", encoding="utf-8").write("x\u200by")
+            self._write(f, "x\u200by")
             os.chmod(f, 0o600)
             m.main([f, "--strip", "--in-place"])
             self.assertEqual(os.stat(f).st_mode & 0o777, 0o600)
@@ -260,10 +281,9 @@ class TestStripSafety(unittest.TestCase):
     def test_clean_copy_default(self):
         with tempfile.TemporaryDirectory() as d:
             f = os.path.join(d, "p.md")
-            open(f, "w", encoding="utf-8").write("x\u200by")
+            self._write(f, "x\u200by")
             m.main([f, "--strip"])
-            self.assertEqual(open(os.path.join(d, "p.clean.md"),
-                                  encoding="utf-8").read(), "xy")
+            self.assertEqual(self._read(os.path.join(d, "p.clean.md")), "xy")
 
 
 @unittest.skipIf(os.name == "posix" and not hasattr(os, "fork"),
@@ -488,7 +508,8 @@ class TestCaps(unittest.TestCase):
     def test_max_bytes_refuses_large_file(self):
         with tempfile.TemporaryDirectory() as d:
             f = os.path.join(d, "big.txt")
-            open(f, "w", encoding="utf-8").write("x" * 5000)
+            with open(f, "w", encoding="utf-8") as fh:
+                fh.write("x" * 5000)
             buf = io.StringIO()
             with redirect_stdout(buf):
                 code = m.main([f, "--max-bytes", "1000"])
@@ -497,13 +518,427 @@ class TestCaps(unittest.TestCase):
     def test_max_bytes_zero_allows(self):
         with tempfile.TemporaryDirectory() as d:
             f = os.path.join(d, "ok.txt")
-            open(f, "w", encoding="utf-8").write("x" * 5000)
+            with open(f, "w", encoding="utf-8") as fh:
+                fh.write("x" * 5000)
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(m.main([f, "--max-bytes", "0"]), 0)
 
     def test_negative_caps_error(self):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(m.main(["x", "--max-hits", "-1"]), 2)
+
+
+@unittest.skipIf(os.name == "posix" and not hasattr(os, "fork"),
+                 "platform cannot spawn subprocesses (e.g. iOS)")
+class TestOutputContract(unittest.TestCase):
+    """Exact output-stream contracts (audit findings F-01, F-02)."""
+
+    def test_strip_stdout_is_data_only(self):
+        # F-01: stdout must be byte-for-byte the cleaned document, with no
+        # report text mixed in. assertIn is not enough; assert exact equality.
+        code, out, err = run_cli(["-", "--strip", "--stdout"], "a​b")
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "ab")
+        self.assertNotIn("Source:", out)
+        # the human report is still available, on stderr
+        self.assertIn("Source:", err)
+
+    def test_strip_stdout_clean_input_is_empty(self):
+        code, out, _ = run_cli(["-", "--strip", "--stdout"], "clean")
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "clean")
+
+    def test_json_and_stdout_are_mutually_exclusive(self):
+        # F-02: the combination cannot produce a coherent stream; reject it.
+        code, out, err = run_cli(["-", "--strip", "--stdout", "--json"], "a​b")
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("mutually exclusive", err)
+
+
+class TestFvs4(unittest.TestCase):
+    """F-05: U+180F MONGOLIAN FREE VARIATION SELECTOR FOUR is in scope."""
+
+    def test_fvs4_classified_as_variation_selector(self):
+        name, category = m.classify(0x180F)
+        self.assertEqual(category, "variation-selector")
+        self.assertEqual(name, "MONGOLIAN FREE VARIATION SELECTOR FOUR")
+
+    def test_fvs4_detected_in_scan(self):
+        hits = m.scan("a᠏b", ALL).hits
+        self.assertEqual([h["codepoint"] for h in hits], [0x180F])
+
+    def test_vowel_separator_stays_invisible_format(self):
+        # U+180E sits inside the FVS range but must remain invisible-format;
+        # classify checks the single-codepoint table first.
+        self.assertEqual(m.classify(0x180E)[1], "invisible-format")
+
+
+class TestEndiannessPreserved(unittest.TestCase):
+    """F-03: --strip preserves exact byte order; backups are byte-for-byte."""
+
+    def _strip_in_place(self, raw):
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "t.txt")
+            with open(f, "wb") as fh:
+                fh.write(raw)
+            with redirect_stdout(io.StringIO()):
+                m.main([f, "--strip", "--in-place"])
+            with open(f, "rb") as fh:
+                cleaned = fh.read()
+            with open(f + ".bak", "rb") as fh:
+                backup = fh.read()
+        return cleaned, backup
+
+    def test_utf16be_byte_order_preserved(self):
+        raw = b"\xfe\xff" + "a​b".encode("utf-16-be")
+        cleaned, backup = self._strip_in_place(raw)
+        self.assertTrue(cleaned.startswith(b"\xfe\xff"))
+        self.assertEqual(cleaned, b"\xfe\xff" + "ab".encode("utf-16-be"))
+        self.assertEqual(backup, raw)  # backup is byte-for-byte the original
+
+    def test_utf16le_byte_order_preserved(self):
+        raw = b"\xff\xfe" + "a​b".encode("utf-16-le")
+        cleaned, backup = self._strip_in_place(raw)
+        self.assertTrue(cleaned.startswith(b"\xff\xfe"))
+        self.assertEqual(cleaned, b"\xff\xfe" + "ab".encode("utf-16-le"))
+        self.assertEqual(backup, raw)
+
+    def test_utf32be_byte_order_preserved(self):
+        raw = b"\x00\x00\xfe\xff" + "a​b".encode("utf-32-be")
+        cleaned, backup = self._strip_in_place(raw)
+        self.assertTrue(cleaned.startswith(b"\x00\x00\xfe\xff"))
+        self.assertEqual(backup, raw)
+
+
+class TestMongolianFvsNames(unittest.TestCase):
+    """P0: names must not depend on the interpreter's Unicode version.
+
+    U+180F arrived in Unicode 14.0, so unicodedata.name() misses it on Python
+    3.9/3.10 (Unicode 13.0) and would report a generic fallback there while the
+    generated browser build reports the real name.
+    """
+
+    def test_all_four_selectors_named_exactly(self):
+        expected = {
+            0x180B: "MONGOLIAN FREE VARIATION SELECTOR ONE",
+            0x180C: "MONGOLIAN FREE VARIATION SELECTOR TWO",
+            0x180D: "MONGOLIAN FREE VARIATION SELECTOR THREE",
+            0x180F: "MONGOLIAN FREE VARIATION SELECTOR FOUR",
+        }
+        for cp, name in expected.items():
+            got_name, category = m.classify(cp)
+            self.assertEqual(got_name, name, f"U+{cp:04X}")
+            self.assertEqual(category, "variation-selector")
+
+    def test_names_do_not_come_from_unicodedata(self):
+        # Guards the fix itself: if someone reverts to unicodedata.name, this
+        # still passes on a new Python but the table is what must be present.
+        self.assertIn(0x180F, m._MONGOLIAN_FVS)
+
+
+class TestSeverity(unittest.TestCase):
+    """G-01: the suspicion model."""
+
+    def test_annotated_hits_are_info(self):
+        for text in ("﻿hi", "\U0001f468‍\U0001f469", "10 000"):
+            hit = m.scan(text, ALL).hits[0]
+            self.assertTrue(hit["note"], text)
+            self.assertEqual(hit["severity"], "info", text)
+
+    def test_reordering_bidi_is_high(self):
+        for cp in (0x202D, 0x202E, 0x2066, 0x2069):
+            hit = m.scan("a" + chr(cp) + "b", ALL).hits[0]
+            self.assertEqual(hit["severity"], "high", hex(cp))
+
+    def test_bidi_marks_are_not_high(self):
+        # A plain direction mark does not reorder anything on its own.
+        hit = m.scan("a‎b", ALL).hits[0]
+        self.assertEqual(hit["severity"], "medium")
+
+    def test_tag_characters_are_high(self):
+        hit = m.scan("a\U000e0041b", ALL).hits[0]
+        self.assertEqual(hit["severity"], "high")
+
+    def test_unexplained_zero_width_is_medium(self):
+        self.assertEqual(m.scan("a​b", ALL).hits[0]["severity"], "medium")
+
+    def test_plain_nonstandard_space_is_low(self):
+        self.assertEqual(m.scan("a b", ALL).hits[0]["severity"], "low")
+
+    def test_min_severity_filters_scope(self):
+        text = "﻿a b​c‮d"
+        self.assertEqual(m.scan(text, ALL).total, 4)
+        self.assertEqual(m.scan(text, ALL, 0, "low").total, 3)
+        self.assertEqual(m.scan(text, ALL, 0, "medium").total, 2)
+        self.assertEqual(m.scan(text, ALL, 0, "high").total, 1)
+
+    def test_strip_respects_min_severity(self):
+        # The emoji ZWJ is info, so a medium+ strip must leave it intact.
+        text = "\U0001f468‍\U0001f469 and ​"
+        self.assertEqual(m.strip_hidden(text, ALL, "medium"),
+                         "\U0001f468‍\U0001f469 and ")
+        self.assertEqual(m.strip_hidden(text, ALL),
+                         "\U0001f468\U0001f469 and ")
+
+    def test_suspicious_only_exits_clean_on_legitimate_text(self):
+        code, out, _ = run_cli(["-", "--suspicious-only"],
+                               "\U0001f468‍\U0001f469 café")
+        self.assertEqual(code, 0)
+        self.assertIn("CLEAN", out)
+
+    def test_severity_in_json(self):
+        code, out, _ = run_cli(["--json"], "a​b")
+        payload = json.loads(out)
+        self.assertEqual(payload["min_severity"], "info")
+        self.assertEqual(payload["results"][0]["hits"][0]["severity"],
+                         "medium")
+
+
+class TestDefaultIgnorableOracle(unittest.TestCase):
+    """F-10/G-03: an independent specification oracle for the taxonomy.
+
+    Parity proves Python and JS agree; it cannot prove the shared taxonomy is
+    complete. This checks the curated set against frozen UCD data instead, so a
+    future omission like U+180F fails here rather than passing silently.
+    """
+
+    # Default-ignorable code points deliberately outside the curated
+    # taxonomy: reserved ranges and specialist formats that would add noise
+    # without adding signal. Reachable via --include-default-ignorables.
+    EXPECTED_GAPS = (
+        {0x2065}                        # reserved
+        | set(range(0xFFF0, 0xFFF9))    # reserved
+        | set(range(0x1BCA0, 0x1BCA4))  # shorthand format controls
+        | set(range(0x1D173, 0x1D17B))  # musical beam/phrase controls
+        | {0xE0000}                     # reserved
+        | set(range(0xE0002, 0xE0020))  # reserved tag range
+        | set(range(0xE0080, 0xE0100))  # reserved tag range
+        | set(range(0xE01F0, 0xE1000))  # reserved variation-selector range
+    )
+
+    def _all_default_ignorable(self):
+        for lo, hi in m.DEFAULT_IGNORABLE:
+            for cp in range(lo, hi + 1):
+                yield cp
+
+    def test_ranges_are_sorted_and_disjoint(self):
+        prev_hi = -1
+        for lo, hi in m.DEFAULT_IGNORABLE:
+            self.assertLessEqual(lo, hi)
+            self.assertGreater(lo, prev_hi, f"overlap at U+{lo:04X}")
+            self.assertLess(hi, 0x110000)
+            prev_hi = hi
+
+    def test_curated_taxonomy_gaps_are_exactly_as_documented(self):
+        default = set(m.DEFAULT_CATEGORIES)
+        gaps = set()
+        for cp in self._all_default_ignorable():
+            info = m.classify(cp)
+            if info is None or info[1] not in default:
+                gaps.add(cp)
+        self.assertEqual(gaps, self.EXPECTED_GAPS)
+
+    def test_nothing_default_ignorable_is_invisible_to_the_tool(self):
+        for cp in self._all_default_ignorable():
+            self.assertIsNotNone(m.classify(cp), f"U+{cp:04X}")
+
+    def test_opt_in_category_is_off_by_default(self):
+        self.assertNotIn("default-ignorable", m.DEFAULT_CATEGORIES)
+        self.assertNotIn("default-ignorable",
+                         m.resolve_categories(None, ""))
+        self.assertIn("default-ignorable",
+                      m.resolve_categories(None, "",
+                                           include_default_ignorables=True))
+
+    def test_reserved_default_ignorable_needs_the_flag(self):
+        text = "a⁥b"
+        self.assertEqual(m.scan(text, set(m.DEFAULT_CATEGORIES)).total, 0)
+        self.assertEqual(m.scan(text, m.resolve_categories(
+            None, "", include_default_ignorables=True)).total, 1)
+
+
+class TestCleanOutputCollision(unittest.TestCase):
+    """F-13: an existing .clean output is not silently replaced."""
+
+    def test_refuses_then_force_overwrites(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "p.md")
+            with open(f, "w", encoding="utf-8") as fh:
+                fh.write("x​y")
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(m.main([f, "--strip"]), 0 or 1)
+            out = os.path.join(d, "p.clean.md")
+            with open(out, "w", encoding="utf-8") as fh:
+                fh.write("PRECIOUS")
+            with redirect_stdout(io.StringIO()):
+                code = m.main([f, "--strip"])
+            self.assertEqual(code, 2)
+            with open(out, encoding="utf-8") as fh:
+                self.assertEqual(fh.read(), "PRECIOUS")
+            with redirect_stdout(io.StringIO()):
+                m.main([f, "--strip", "--force"])
+            with open(out, encoding="utf-8") as fh:
+                self.assertEqual(fh.read(), "xy")
+
+    def test_force_requires_strip(self):
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(m.main(["x", "--force"]), 2)
+
+
+class TestBackupReservation(unittest.TestCase):
+    """F-14: the backup name is claimed atomically, not check-then-write."""
+
+    def test_existing_backup_still_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "p.txt")
+            with open(f, "w", encoding="utf-8") as fh:
+                fh.write("x​y")
+            with open(f + ".bak", "w", encoding="utf-8") as fh:
+                fh.write("PRECIOUS")
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(m.main([f, "--strip", "--in-place"]), 2)
+            with open(f + ".bak", encoding="utf-8") as fh:
+                self.assertEqual(fh.read(), "PRECIOUS")
+
+    def test_copy_bytes_exclusive_raises_on_existing(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "a")
+            dst = os.path.join(d, "b")
+            with open(src, "wb") as fh:
+                fh.write(b"data")
+            with open(dst, "wb") as fh:
+                fh.write(b"taken")
+            with self.assertRaises(FileExistsError):
+                m.copy_bytes(src, dst, exclusive=True)
+            with open(dst, "rb") as fh:
+                self.assertEqual(fh.read(), b"taken")
+
+
+class TestFlagValidation(unittest.TestCase):
+    """F-17: nonsensical flag states are rejected with a clear message."""
+
+    def test_in_place_on_stdin_rejected(self):
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(m.main(["-", "--strip", "--in-place"]), 2)
+            self.assertEqual(m.main(["--strip", "--in-place"]), 2)
+
+    def test_repeated_stdin_rejected(self):
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(m.main(["-", "-"]), 2)
+
+    def test_conflicting_severity_flags_rejected(self):
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(
+                m.main(["-", "--suspicious-only",
+                        "--min-severity", "high"]), 2)
+
+
+class TestBoundedFileRead(unittest.TestCase):
+    """F-07: the read is bounded even when the stat precheck is fooled."""
+
+    def test_read_rejects_when_getsize_underreports(self):
+        # Simulate a file that grew after the stat, or a special file whose
+        # size metadata lies: getsize says small, the bytes are large. The
+        # bounded read (max_bytes+1) must still reject.
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "grow.txt")
+            with open(f, "wb") as fh:
+                fh.write(b"x" * 2000)
+            with unittest.mock.patch("os.path.getsize", return_value=10):
+                with self.assertRaises(m.SourceError):
+                    m.read_source(f, max_bytes=1000)
+
+
+class TestFrozenDigitTable(unittest.TestCase):
+    """The digit table is pinned, not read from the interpreter.
+
+    str.isdigit() gains code points with each Unicode release. Deriving the
+    table at runtime made the generated browser build differ per build machine
+    and broke the CI staleness gate, so it is frozen like the default-ignorable
+    data. These tests are the guard that it stays honest.
+    """
+
+    def test_ranges_are_sorted_and_disjoint(self):
+        prev_hi = -1
+        for lo, hi in m._DIGIT_RANGES:
+            self.assertLessEqual(lo, hi)
+            self.assertGreater(lo, prev_hi + 1, f"adjacent/overlap at {lo:X}")
+            prev_hi = hi
+
+    def test_matches_this_interpreter_for_everything_it_knows(self):
+        # The frozen table is pinned at a Unicode version that may be newer
+        # than the running Python, so it may be a superset. It must never be a
+        # subset: anything this interpreter calls a digit has to be in it.
+        missing = [cp for cp in range(0x110000)
+                   if chr(cp).isdigit() and not m._is_digit(chr(cp))]
+        self.assertEqual(missing, [], "frozen digit table is behind this "
+                                      "Python; regenerate and bump it")
+
+    def test_known_edges(self):
+        self.assertTrue(m._is_digit("2"))        # Nd
+        self.assertTrue(m._is_digit("²"))   # superscript two: No, is digit
+        self.assertFalse(m._is_digit("¼"))  # one quarter: No, not a digit
+        self.assertFalse(m._is_digit(""))
+
+    def test_note_uses_the_frozen_table(self):
+        h = m.scan("10 000", ALL).hits[0]
+        self.assertIn("digit grouping", h["note"])
+
+
+class TestChangelogRendering(unittest.TestCase):
+    """The patch-notes page is generated from CHANGELOG.md at build time."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, os.path.join(os.path.dirname(SCRIPT), "tools"))
+        import build_web
+        cls.bw = build_web
+
+    def test_markup_in_the_changelog_cannot_inject_html(self):
+        # Escaping must happen before formatting, or a changelog entry could
+        # put live markup on a public page.
+        html = self.bw.changelog_html("## 1.0\n- <script>alert(1)</script>\n")
+        self.assertNotIn("<script>", html)
+        self.assertIn("&lt;script&gt;", html)
+
+    def test_inline_formatting(self):
+        html = self.bw.changelog_html(
+            "## 1.0\n- **bold** and `code` and *it*\n")
+        self.assertIn("<strong>bold</strong>", html)
+        self.assertIn("<code>code</code>", html)
+        self.assertIn("<em>it</em>", html)
+
+    def test_asterisks_inside_code_stay_literal(self):
+        # A flag like `--strip` must not be eaten by the emphasis pass.
+        html = self.bw.changelog_html("## 1.0\n- `a*b*c` stays\n")
+        self.assertIn("<code>a*b*c</code>", html)
+        self.assertNotIn("<em>", html)
+
+    def test_wrapped_list_items_are_joined(self):
+        html = self.bw.changelog_html(
+            "## 1.0\n- first line\n  continued here\n")
+        self.assertIn("first line continued here", html)
+        self.assertEqual(html.count("<li>"), 1)
+
+    def test_breaking_sections_are_flagged(self):
+        html = self.bw.changelog_html("## 2.0\n### Changed (breaking)\n- x\n")
+        self.assertIn("tagline danger", html)
+
+    def test_sections_are_balanced(self):
+        html = self.bw.changelog_html("## 2.0\n- a\n\n## 1.0\n- b\n")
+        self.assertEqual(html.count("<section"), html.count("</section>"))
+        self.assertEqual(html.count("<section"), 2)
+
+    def test_rendered_page_leaks_no_contact_or_session_data(self):
+        # The public page must never carry an address, a URL, or the commit
+        # trailers git history holds. Generated from CHANGELOG.md only.
+        with open(os.path.join(os.path.dirname(SCRIPT), "CHANGELOG.md"),
+                  encoding="utf-8") as fh:
+            body = self.bw.changelog_html(fh.read())
+        for needle in ("@", "http", "session_", "Co-Authored", "noreply"):
+            self.assertNotIn(needle, body,
+                             f"{needle!r} reached the public patch notes")
 
 
 if __name__ == "__main__":

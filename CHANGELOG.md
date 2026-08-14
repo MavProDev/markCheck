@@ -1,5 +1,199 @@
 # Changelog
 
+## 2.1.0
+A visual and functional overhaul of the browser build. The scanner engine is
+untouched — the Python/JavaScript parity suite passes unchanged — so this is
+presentation, ergonomics, and deployment only.
+
+### Added
+- **Redesigned interface.** A translucent, layered treatment with an adaptive
+  light and dark palette, a manual theme switch that overrides the system
+  setting, and restrained motion: spring-eased controls, a staggered result
+  reveal, and a counting verdict figure.
+- **Severity, surfaced.** The 2.0.0 severity model is now visible in the
+  browser: colour-coded chips, a proportional severity bar, and a **Suspicious
+  only** switch that applies the same `--min-severity medium` scope as the CLI,
+  so a conservative clean will not break emoji sequences.
+- **Drag and drop a text file** onto the page, or pick one. Read locally with
+  FileReader; the file never leaves the machine.
+- **Command palette** on `⌘K` / `Ctrl-K`, plus `⌘↵` to scan and `Esc` to clear.
+- **Before / after view** comparing the original with the cleaned text.
+- **Export report** writes the findings to JSON locally, via a Blob. No upload.
+- **Patch notes page** at `web/changelog.html`, generated from `CHANGELOG.md` by
+  `tools/build_web.py` and gated in CI like the rest of the web build. It is
+  generated from that file alone, never from git history, whose commit trailers
+  carry addresses and session URLs that do not belong on a public page. A test
+  asserts the rendered page contains no address, URL, or commit trailer.
+- **Visitor counter, counted on the server.** `web/api/index.js` substitutes the
+  count into the HTML before it is sent, so the browser makes no extra request
+  and `connect-src 'none'` still holds. A single integer is stored: no IP
+  address, user agent, per-visitor row, or timestamp. If the datastore is
+  unconfigured or unreachable the page is served exactly as normal with the
+  counter absent, so it can never take the site down.
+
+### Fixed
+- **The browser build was not reproducible across Python versions.** The digit
+  table added in 2.0.0 was derived by asking the running interpreter which code
+  points `str.isdigit()` accepts, and that set grows with each Unicode release:
+  a machine on Unicode 15.0 emitted two ranges (Kawi and Nag Mundari digits)
+  that a machine on 14.0 did not, so the committed page depended on who built
+  it and the CI staleness gate failed. The table is now frozen at the pinned
+  Unicode version alongside the default-ignorable data, and `_note` reads from
+  it rather than from `str.isdigit()`, so the CLI and the browser agree on
+  every interpreter. A test asserts the frozen table is never behind the
+  running Python.
+- **The security headers the meta CSP cannot carry are now sent for real.**
+  `web/vercel.json` sets `Content-Security-Policy: frame-ancestors 'none'`,
+  which is ignored in a `<meta>` element and was therefore providing no
+  clickjacking protection at all on the hosted copy, plus
+  `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, and the
+  cross-origin isolation headers. This closes the last audit finding that could
+  only be fixed at the deployment layer.
+- **Keyboard focus was invisible on the new switches.** Their real checkbox is
+  visually hidden, so the focus ring was being drawn on an element nobody could
+  see. Found by an automated browser pass, not by eye.
+- **Content could scroll underneath the sticky header** and become unclickable;
+  the document now reserves scroll padding for it.
+- Browser copy said "five categories" where the implementation has six, and
+  still stated a vendor watermark attribution as settled fact. Both were
+  corrected in the README in 2.0.0 but missed in the page itself.
+
+### Changed
+- The CI staleness gate now diffs the whole `web/` directory rather than
+  `index.html` alone, so a stale generated patch-notes page fails the build.
+
+## 2.0.0
+Completes the external engineering audit backlog: the remaining product,
+forensic, and polish items on top of the 1.7.0 hardening pass. Major version
+because two behaviours changed in ways a script could notice; see Migration.
+
+### Added
+- **Severity model.** Every hit is now rated `info`, `low`, `medium`, or
+  `high`. Annotated likely-legitimate uses (BOM at file start, emoji ZWJ,
+  presentation selectors, French spacing, digit grouping) are `info`; bidi
+  embeddings/overrides/isolates and the Tags block are `high`. New
+  `--min-severity LEVEL` and `--suspicious-only` (shorthand for
+  `--min-severity medium`). The filter narrows *scope*, not just display: the
+  exit code and `--strip` follow it, so `--suspicious-only --strip` is a
+  conservative cleanup that will not break emoji sequences. JSON gains a
+  `severity` field per hit and a top-level `min_severity`, both additive.
+- **Forensic mode.** `--include-default-ignorables` enables a seventh, opt-in
+  `default-ignorable` category covering every remaining Unicode
+  `Default_Ignorable_Code_Point`, including reserved ranges. Off by default so
+  the curated taxonomy keeps its signal-to-noise ratio.
+- **Specification oracle.** A frozen `Default_Ignorable_Code_Point` table
+  (pinned Unicode version, independent of the running interpreter) is now the
+  reference the curated taxonomy is tested against. Parity proves Python and
+  JavaScript agree; it cannot prove the shared taxonomy is complete, which is
+  how U+180F stayed missing. A conformance test now asserts the exact set of
+  documented gaps, so a future omission fails a test instead of passing
+  silently.
+- `--force` to overwrite an existing `FILE.clean.EXT`.
+- `tools/benchmark.py`, a non-gating harness reporting wall-clock and peak
+  memory across ordinary, newline-dense, mostly-hidden, and mixed-Unicode
+  corpora.
+- A man page and bash/zsh completions, generated from the argparse parser by
+  `tools/build_docs.py` and diff-gated in CI, so a new flag cannot ship with
+  stale docs.
+
+### Fixed
+- **U+180F was named inconsistently across Python versions.** Its name was
+  resolved through `unicodedata`, but the code point was added in Unicode 14.0,
+  so on Python 3.9/3.10 (which bundle Unicode 13.0) the lookup missed and fell
+  back to a generic label while the generated browser build reported the real
+  name. The Mongolian free variation selectors are now named from an explicit
+  table. Introduced in 1.7.0.
+- **Browser and CLI advisory notes could disagree on digits.** The browser
+  approximated Python's `str.isdigit()` with the `Nd`/`No` Unicode categories,
+  which is wrong in both directions: U+00BC is `No` but not a digit, and 128
+  digits are outside `Nd`. An exact range table is now generated from CPython,
+  and the parity suite covers the edge cases.
+- Backup creation no longer has a check-then-write race: the `.bak` name is
+  claimed with an atomic exclusive create, so two concurrent runs cannot both
+  conclude no backup exists.
+- Atomic writes now fsync the containing directory, so the rename itself is
+  durable and not just the file contents.
+- `--in-place` on stdin, a repeated `-` source, `--force` without `--strip`, and
+  `--suspicious-only` combined with `--min-severity` are now rejected with a
+  clear message instead of being silently ignored or ambiguous.
+- The browser page no longer lists `frame-ancestors` in its meta CSP. The spec
+  ignores that directive when the policy is delivered in a `<meta>` element, so
+  listing it implied a clickjacking protection that never existed. It is now
+  documented as an HTTP response header instead. `connect-src 'none'`, which is
+  what backs the privacy claim, is unchanged and remains effective.
+
+### Changed (breaking)
+- **`--strip` no longer silently overwrites an existing `FILE.clean.EXT`.** It
+  refuses with exit code 2. This matches the existing `.bak` behaviour, where
+  refusing to clobber is already the rule.
+  *Migration*: pass `--force` to restore the old overwrite behaviour.
+- **A closed pipe is no longer reported as success.** `BrokenPipeError` used to
+  be caught and turned into exit 0, so `markcheck f.md | head` claimed success
+  even when hidden characters were found. On POSIX, markcheck now uses default
+  SIGPIPE handling and terminates with the conventional 141; on Windows, the
+  fallback path returns 2 rather than 0.
+  *Migration*: a pipeline that relied on exit 0 from a truncated run should
+  check for 141, or avoid closing the pipe early.
+
+### Documentation
+- Performance claims are now backed by `tools/benchmark.py` and stated
+  honestly: ~3.4x input size in peak memory for ordinary prose with sparse
+  hits, but that is not a bound — pathological hidden-heavy input reaches ~140x
+  uncapped, and `--max-hits` is what bounds the worst case. Throughput is
+  hardware-dependent and quoted as a measured range.
+- Vendor attribution wording softened: markcheck no longer restates any
+  vendor's explanation of a watermark or training artifact as settled fact, and
+  points readers to first-party sources.
+- Documented the metadata boundary of atomic replacement (permission bits are
+  preserved; ownership, timestamps, ACLs, and xattrs are not).
+
+## 1.7.0
+Hardening release from an external engineering audit. No redesign; the
+architecture, scope, and zero-dependency model are unchanged. Fixes several
+reproducible output-contract, encoding, resource, and Unicode-coverage defects.
+
+- **Output contract.** `--strip --stdout` now writes the cleaned document to
+  stdout and *only* that; the human report goes to stderr. Previously the
+  report was printed to stdout first, so `... --strip --stdout > clean.txt`
+  captured the report plus the cleaned text. Redirecting stdout now yields the
+  cleaned bytes exactly. New tests assert exact stdout equality, not just
+  substring containment.
+- **Output contract.** `--json` and `--stdout` are now rejected as mutually
+  exclusive. The combination wrote cleaned text and then a JSON payload to the
+  same stream, producing output that was neither valid JSON nor a clean
+  document.
+- **Encoding fidelity.** UTF-16/UTF-32 byte order is now preserved exactly. The
+  decoder records the precise byte order (`utf-16-le`/`-be`, `utf-32-le`/`-be`)
+  instead of the generic family, so re-encoding no longer flips a big-endian
+  document to the platform's native little-endian on the way out.
+- **Backup fidelity.** With `--in-place`, the `.bak` backup is now a
+  byte-for-byte copy of the original file rather than a re-encode of the
+  decoded text, so it is a faithful image regardless of source encoding.
+- **Error status.** A refused write — declining to overwrite an existing
+  `.bak` — now exits with code 2 instead of leaving the exit code based only on
+  whether hidden characters were found. A script can now tell the requested
+  cleanup did not happen.
+- **Resource safety.** `scan()` now tracks line and column incrementally
+  instead of building a list of every newline offset and binary-searching it.
+  On newline-heavy input the old list of Python integers could consume many
+  times the input size before any hit was stored; the streaming pass removes
+  that amplification and simplifies the code.
+- **Resource safety.** `--max-bytes` is now enforced at the actual read
+  boundary for files (read at most `max_bytes + 1`), not only via a
+  `getsize()` precheck that a growing file or a special file could defeat.
+- **Unicode coverage.** U+180F MONGOLIAN FREE VARIATION SELECTOR FOUR is now
+  detected. It is an invisible variation selector in the stated threat class
+  and was previously missed by both the Python and the browser builds.
+- **Browser resource safety.** The browser scan now caps stored hit records
+  (mirroring the Python `total`/stored/`capped` model) so a very large paste
+  that is mostly hidden characters cannot grow an unbounded array in the tab.
+  The reported total stays exact.
+- Docs: corrected the category count (six, not five), documented the byte-order
+  and byte-for-byte backup guarantees.
+- Tests: added exact-equality output-contract tests, explicit BE/LE encoding
+  fixtures, an FVS4 detection test, a bounded-read test, and replaced bare file
+  `open()` calls with context managers.
+
 ## 1.6.0
 - Fix a false annotation: a NO-BREAK SPACE or NARROW NO-BREAK SPACE at the end
   of the text was labeled "French-style punctuation spacing (likely

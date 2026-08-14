@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none';
+  script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none';
+  form-action 'none'; connect-src 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>markcheck - patch notes</title>
+<meta name="description" content="Release history for markcheck, the hidden
+Unicode character scanner.">
+<style>
+  :root {
+    --bg: #f2f2f7;
+    --bg-tint-a: #d8e6ff;
+    --bg-tint-b: #ffe4d6;
+    --bg-tint-c: #e6dcff;
+    --glass: rgba(255, 255, 255, 0.66);
+    --glass-solid: #ffffff;
+    --glass-strong: rgba(255, 255, 255, 0.82);
+    --edge: rgba(0, 0, 0, 0.09);
+    --edge-lit: rgba(255, 255, 255, 0.9);
+    --ink: #1d1d1f;
+    --dim: #6e6e73;
+    --faint: rgba(0, 0, 0, 0.045);
+    --accent: #0071e3;
+    --high: #c9342b;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.07);
+    --radius: 18px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto,
+            Helvetica, Arial, sans-serif;
+    --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #000000; --bg-tint-a: #0a2f6b; --bg-tint-b: #5c2a00;
+      --bg-tint-c: #35206b; --glass: rgba(28, 28, 30, 0.62);
+      --glass-solid: #1c1c1e; --glass-strong: rgba(38, 38, 41, 0.86);
+      --edge: rgba(255, 255, 255, 0.11); --edge-lit: rgba(255, 255, 255, 0.14);
+      --ink: #f5f5f7; --dim: #98989d; --faint: rgba(255, 255, 255, 0.06);
+      --accent: #0a84ff; --high: #ff453a;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #000000; --bg-tint-a: #0a2f6b; --bg-tint-b: #5c2a00;
+    --bg-tint-c: #35206b; --glass: rgba(28, 28, 30, 0.62);
+    --glass-solid: #1c1c1e; --glass-strong: rgba(38, 38, 41, 0.86);
+    --edge: rgba(255, 255, 255, 0.11); --edge-lit: rgba(255, 255, 255, 0.14);
+    --ink: #f5f5f7; --dim: #98989d; --faint: rgba(255, 255, 255, 0.06);
+    --accent: #0a84ff; --high: #ff453a;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.65 var(--sans); letter-spacing: -0.011em;
+    -webkit-font-smoothing: antialiased; min-height: 100vh; overflow-x: hidden;
+  }
+  .aura {
+    position: fixed; inset: -20vmax; z-index: -1; pointer-events: none;
+    filter: blur(90px); opacity: 0.5;
+  }
+  .aura i {
+    position: absolute; display: block; border-radius: 50%;
+    width: 46vmax; height: 46vmax;
+  }
+  .aura i:nth-child(1) { background: var(--bg-tint-a); top: 2%; left: 4%;
+    animation: drift1 34s var(--ease) infinite alternate; }
+  .aura i:nth-child(2) { background: var(--bg-tint-b); top: 26%; right: 2%;
+    animation: drift2 42s var(--ease) infinite alternate; }
+  .aura i:nth-child(3) { background: var(--bg-tint-c); bottom: 2%; left: 28%;
+    animation: drift3 38s var(--ease) infinite alternate; }
+  @keyframes drift1 { to { transform: translate3d(8vmax, 6vmax, 0) scale(1.15); } }
+  @keyframes drift2 { to { transform: translate3d(-9vmax, 8vmax, 0) scale(1.1); } }
+  @keyframes drift3 { to { transform: translate3d(6vmax, -7vmax, 0) scale(1.18); } }
+
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid var(--edge); border-radius: var(--radius);
+    box-shadow: var(--shadow), inset 0 1px 0 var(--edge-lit);
+  }
+  @supports not ((backdrop-filter: blur(1px)) or
+                 (-webkit-backdrop-filter: blur(1px))) {
+    .glass { background: var(--glass-solid); }
+  }
+
+  nav {
+    position: sticky; top: 0; z-index: 50; display: flex; align-items: center;
+    gap: 12px; padding: 10px 16px; border-radius: 0; border-width: 0 0 1px;
+    background: var(--glass-strong);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    backdrop-filter: blur(28px) saturate(180%);
+    border-bottom: 1px solid var(--edge);
+  }
+  nav .wordmark {
+    font-weight: 700; font-size: 17px; letter-spacing: -0.02em;
+    display: flex; align-items: center; gap: 8px; margin-right: auto;
+  }
+  nav .dot {
+    width: 10px; height: 10px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  nav a, .ghost {
+    color: var(--ink); text-decoration: none; font-size: 14px; padding: 7px 12px;
+    border-radius: 999px; border: 1px solid transparent; background: transparent;
+    cursor: pointer; font-family: inherit;
+    transition: background .25s var(--ease), transform .25s var(--spring);
+  }
+  nav a:hover, .ghost:hover { background: var(--faint); }
+  nav a:active, .ghost:active { transform: scale(0.96); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  main { max-width: 800px; margin: 0 auto; padding: 22px 16px 80px; }
+  header.hero { text-align: center; padding: 26px 8px 12px; }
+  header.hero h1 {
+    font-size: clamp(32px, 6vw, 46px); margin: 0 0 10px;
+    letter-spacing: -0.035em; font-weight: 700;
+  }
+  header.hero p { color: var(--dim); margin: 0; }
+
+  .release { padding: 22px 24px; margin: 20px 0; animation: rise .5s var(--ease) both; }
+  .release h2 { margin: 0 0 4px; font-size: 15px; }
+  .ver {
+    display: inline-block; font: 600 13px/1 var(--mono); padding: 7px 12px;
+    border-radius: 999px; background: var(--accent); color: #fff;
+    letter-spacing: 0.01em;
+  }
+  .tagline {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--dim); margin: 22px 0 8px; font-weight: 700;
+  }
+  .tagline.danger { color: var(--high); }
+  .release p { margin: 10px 0; color: var(--dim); }
+  .release ul { margin: 8px 0; padding-left: 20px; }
+  .release li { margin: 7px 0; color: var(--dim); }
+  .release strong { color: var(--ink); font-weight: 600; }
+  code {
+    font: 13px/1.4 var(--mono); padding: 2px 6px; border-radius: 6px;
+    background: var(--faint); border: 1px solid var(--edge); color: var(--ink);
+    /* Never split a flag across lines: "--min-severity" breaking after the
+       first dash reads as a different option entirely. */
+    white-space: nowrap;
+  }
+  .release li, .release p { overflow-wrap: break-word; }
+  footer {
+    margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--edge);
+    color: var(--dim); font-size: 13.5px; text-align: center;
+  }
+  footer a { color: var(--accent); }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+  @media (max-width: 560px) {
+    main { padding: 16px 12px 64px; }
+    .release { padding: 18px 16px; }
+    /* A phone is too narrow to hold the longest identifiers on one line, and
+       an unbreakable span would push the whole document sideways. Legibility
+       of a wrapped token beats a page that scrolls horizontally. */
+    code { white-space: normal; overflow-wrap: anywhere; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important;
+      transition-duration: .001ms !important; }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .glass, nav { background: var(--glass-solid);
+      -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .aura { display: none; }
+  }
+  @media (prefers-contrast: more) {
+    :root { --edge: currentColor; --dim: var(--ink); }
+    .glass, nav { background: var(--glass-solid);
+      -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .aura { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="aura" aria-hidden="true"><i></i><i></i><i></i></div>
+
+<nav>
+  <span class="wordmark"><span class="dot"></span>markcheck</span>
+  <a href="index.html">Scanner</a>
+  <button class="ghost" id="theme" aria-label="Switch colour theme"
+    title="Switch colour theme">◐</button>
+</nav>
+
+<main>
+  <header class="hero">
+    <h1>Patch notes</h1>
+    <p>Every release, what changed, and why.</p>
+  </header>
+
+__BODY__
+
+  <footer>
+    markcheck __VERSION__ &middot; MIT licensed &middot;
+    <a href="https://github.com/MavProDev/markcheck" rel="noopener noreferrer">source
+    on GitHub</a><br>
+    Generated from CHANGELOG.md at build time; never edited by hand.
+  </footer>
+</main>
+
+<script>
+// Mirrors the scanner page so the choice carries across both.
+const saved = (function () {
+  try { return localStorage.getItem("markcheck-theme"); } catch (e) { return null; }
+})();
+if (saved) { document.documentElement.setAttribute("data-theme", saved); }
+document.getElementById("theme").addEventListener("click", function () {
+  const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const current = document.documentElement.getAttribute("data-theme") ||
+    (dark ? "dark" : "light");
+  const next = current === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem("markcheck-theme", next); } catch (e) { /* private */ }
+});
+</script>
+</body>
+</html>

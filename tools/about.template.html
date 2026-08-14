@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none';
+  script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none';
+  form-action 'none'; connect-src 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>markcheck - about this tool</title>
+<meta name="description" content="What markcheck does, what it deliberately
+cannot do, how it handles your text, and how to use it.">
+<style>
+__SHARED_CSS__
+
+  .toc {
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+    margin-bottom: 8px;
+  }
+  .toc a {
+    font-size: 13.5px; padding: 7px 13px; border-radius: 999px;
+    border: 1px solid var(--edge); background: var(--faint);
+    color: var(--ink); text-decoration: none;
+    transition: border-color .25s var(--ease), transform .25s var(--spring);
+  }
+  .toc a:hover { border-color: var(--accent); }
+  .toc a:active { transform: scale(0.96); }
+
+  .card { padding: 24px; margin: 18px 0; scroll-margin-top: 80px; }
+  .card > h2 {
+    font-size: 22px; margin: 0 0 14px; letter-spacing: -0.02em;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .card h3 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--dim); margin: 22px 0 8px; font-weight: 700;
+  }
+  .card p, .card li { color: var(--dim); }
+  .card strong { color: var(--ink); font-weight: 600; }
+  .card ul { padding-left: 20px; }
+  .card li { margin: 7px 0; }
+  code {
+    font: 13px/1.4 var(--mono); padding: 2px 6px; border-radius: 6px;
+    background: var(--faint); border: 1px solid var(--edge); color: var(--ink);
+    white-space: nowrap;
+  }
+  pre {
+    background: var(--faint); border: 1px solid var(--edge);
+    border-radius: var(--radius-sm); padding: 14px; overflow-x: auto;
+    font: 13px/1.7 var(--mono); color: var(--ink); margin: 12px 0;
+  }
+  pre code { background: none; border: 0; padding: 0; white-space: pre; }
+
+  .yes, .no {
+    display: flex; gap: 11px; align-items: flex-start; margin: 10px 0;
+  }
+  .yes::before { content: "✓"; color: var(--ok); font-weight: 700;
+    flex: 0 0 auto; }
+  .no::before { content: "✕"; color: var(--high); font-weight: 700;
+    flex: 0 0 auto; }
+
+  .grid { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 620px) { .grid { grid-template-columns: 1fr; } }
+  .mini {
+    padding: 15px; border-radius: var(--radius-sm); border: 1px solid var(--edge);
+    background: var(--faint);
+  }
+  .mini h4 { margin: 0 0 6px; font-size: 14px; }
+  .mini p { margin: 0; font-size: 13.5px; }
+
+  .sev { display: flex; align-items: center; gap: 10px; margin: 9px 0; }
+  .sev .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+  .sev .lbl { font-weight: 600; font-size: 13px; min-width: 62px;
+    color: var(--ink); }
+  .sev .txt { font-size: 13.5px; color: var(--dim); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px;
+          margin-top: 10px; }
+  th, td { text-align: left; padding: 9px 11px; vertical-align: top;
+           border-bottom: 1px solid var(--edge); }
+  th { color: var(--dim); font-size: 12px; text-transform: uppercase;
+       letter-spacing: 0.04em; }
+  td:first-child { white-space: nowrap; }
+  .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  .callout {
+    border-left: 3px solid var(--accent); padding: 13px 16px; margin: 16px 0;
+    background: var(--faint); border-radius: 0 var(--radius-sm)
+    var(--radius-sm) 0;
+  }
+  .callout.warn { border-left-color: var(--med); }
+  @media (max-width: 560px) {
+    code { white-space: normal; overflow-wrap: anywhere; }
+  }
+</style>
+</head>
+<body>
+<div class="aura" aria-hidden="true"><i></i><i></i><i></i></div>
+
+<nav>
+  <span class="wordmark"><span class="dot"></span>markcheck</span>
+  <a href="index.html">Scanner</a>
+  <a href="changelog.html">Patch notes</a>
+  <button class="ghost" id="theme" aria-label="Switch colour theme"
+    title="Switch colour theme">◐</button>
+</nav>
+
+<main>
+  <header class="hero">
+    <h1>About this tool</h1>
+    <p>What it does, what it deliberately cannot do, what happens to your
+      text, and how to use it.</p>
+  </header>
+
+  <nav class="toc" aria-label="On this page">
+    <a href="#what">What it is</a>
+    <a href="#privacy">Your text</a>
+    <a href="#cannot">What it cannot do</a>
+    <a href="#how">How to use it</a>
+    <a href="#severity">Reading results</a>
+    <a href="#cli">Command line</a>
+    <a href="#trust">Why trust it</a>
+  </nav>
+
+  <section class="card glass" id="what">
+    <h2>What markcheck is</h2>
+    <p>Some characters occupy real bytes but draw nothing on screen — or draw
+      something that looks exactly like an ordinary space. A zero-width space
+      between two letters. A narrow no-break space standing in for a normal
+      one. A right-to-left override that silently reverses the words after it.
+      You cannot see them, copy them out, or count them by eye.</p>
+    <p>markcheck reads the bytes and tells you <strong>what is present, exactly
+      where, and what it is</strong>. It can hand back a cleaned copy. That is
+      the whole product.</p>
+    <div class="grid">
+      <div class="mini">
+        <h4>Watermarking</h4>
+        <p>Hidden characters inserted to mark a document's origin or track who
+          leaked it.</p>
+      </div>
+      <div class="mini">
+        <h4>Steganography</h4>
+        <p>Payloads encoded in invisible code points, riding inside ordinary
+          prose.</p>
+      </div>
+      <div class="mini">
+        <h4>Trojan Source</h4>
+        <p>Bidirectional controls that make source code read differently to a
+          human than to a compiler (CVE&#8209;2021&#8209;42574).</p>
+      </div>
+      <div class="mini">
+        <h4>Prompt injection</h4>
+        <p>Instructions smuggled to an AI model in the invisible Unicode Tags
+          block.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card glass" id="privacy">
+    <h2>What happens to your text</h2>
+    <p><strong>Nothing. It never leaves this page.</strong> The scan runs in
+      your browser, in JavaScript, on your own machine. You can disconnect from
+      the internet and it will still work.</p>
+    <div class="yes">This page declares
+      <code>connect-src 'none'</code> in its Content-Security-Policy. That is
+      not a promise, it is an instruction to your browser: the page is
+      forbidden from making a network request, and the browser enforces it even
+      if the code tried.</div>
+    <div class="yes">Files you drop or open are read locally with the browser's
+      own FileReader. They are not uploaded.</div>
+    <div class="yes">Exported reports are built in the page and handed straight
+      to your downloads.</div>
+    <div class="no">No text, no filenames, no results, and no analytics about
+      what you scanned are transmitted, stored, or logged anywhere.</div>
+    <h3>The one thing that does touch a server</h3>
+    <p>The visit counter in the footer. It is incremented on the server before
+      the page is sent to you, which is precisely why the page itself still
+      makes no network request. What gets stored is <strong>a single
+      number</strong> — no IP address, no browser details, no per-visitor
+      record, no timestamp. There is nothing kept that could connect a visit to
+      a person, or to anything you scanned.</p>
+    <div class="callout">Prefer to take none of this on faith? Open your
+      browser's network tab and use the scanner. You will see no requests. Or
+      download <code>index.html</code> and open it with your wifi off.</div>
+  </section>
+
+  <section class="card glass" id="cannot">
+    <h2>What it cannot do</h2>
+    <p>Three different techniques get called "AI watermarking." Only one of
+      them puts anything in the bytes, and that is the only one a byte scanner
+      can ever find.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>Technique</th><th>Where it lives</th>
+        <th>markcheck</th></tr></thead>
+      <tbody>
+        <tr><td>Hidden characters</td>
+          <td>In the text itself, as real code points</td>
+          <td><strong>Detects this</strong></td></tr>
+        <tr><td>Statistical watermarks</td>
+          <td>In <em>which ordinary words</em> a model chose — no characters
+            added</td>
+          <td>Cannot detect, and neither can any byte scanner</td></tr>
+        <tr><td>C2PA provenance</td>
+          <td>A signed manifest in an image or PDF container</td>
+          <td>Out of scope — use <code>c2patool</code> or
+            <code>exiftool</code></td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout warn"><strong>A clean result means "no hidden
+      characters." It does not mean "not AI-generated."</strong> A statistical
+      watermark leaves nothing in the bytes to find, so a clean scan says
+      nothing either way about how the text was written. Rewriting text in your
+      own words removes that class entirely.</div>
+    <h3>Also deliberately out of scope</h3>
+    <ul>
+      <li><strong>Homoglyphs and confusables</strong> — a Cyrillic letter
+        standing in for a Latin lookalike. Those are <em>visible</em> and
+        legitimate in their own scripts; catching abuse needs mixed-script
+        analysis, a different tool.</li>
+      <li><strong>Normalization.</strong> markcheck inspects the bytes as
+        given. It does not NFC/NFD-normalize or compare equivalent
+        sequences.</li>
+      <li><strong>Attribution.</strong> A hidden character proves presence, not
+        origin. markcheck carries no list of vendors and takes no position on
+        who put something there or why.</li>
+    </ul>
+  </section>
+
+  <section class="card glass" id="how">
+    <h2>How to use it</h2>
+    <h3>1. Get your text in</h3>
+    <ul>
+      <li>Paste it into the box, or</li>
+      <li>drag a text file onto the page, or</li>
+      <li>press <code>Choose a file…</code>.</li>
+    </ul>
+    <p>It scans as you type. <code>Check text</code> forces a rescan.</p>
+    <h3>2. Read the verdict</h3>
+    <p>The large number is how many hidden characters are in scope. The bar
+      underneath shows how they split by severity, and the table lists each one
+      with its line, column, code point, and name. Below that, a preview of
+      your text with every hit marked in place, so you can see exactly where
+      they sit.</p>
+    <h3>3. Narrow it down</h3>
+    <p><strong>Suspicious only</strong> hides the hits markcheck has annotated
+      as likely legitimate — a byte-order mark at the start of a file, a joiner
+      holding an emoji together, French punctuation spacing. Turn it on when
+      you only want the things worth explaining.</p>
+    <h3>4. Clean it</h3>
+    <p><code>Copy cleaned</code> puts a cleaned copy on your clipboard.
+      <strong>Before / after</strong> shows you what would change first.</p>
+    <div class="callout">Cleaning respects <strong>Suspicious only</strong>. With
+      it on, a family emoji keeps the joiner that holds it together while the
+      zero-width space hiding in your paragraph is still removed. With it off,
+      everything tracked is removed — which is thorough, but can break emoji
+      sequences and some script shaping.</div>
+    <h3>Keyboard</h3>
+    <div class="scroll"><table>
+      <tbody>
+        <tr><td><code>⌘K</code> / <code>Ctrl K</code></td>
+          <td>Command palette — every action, searchable</td></tr>
+        <tr><td><code>⌘↵</code> / <code>Ctrl ↵</code></td><td>Scan now</td></tr>
+        <tr><td><code>Esc</code></td><td>Clear the text box</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="card glass" id="severity">
+    <h2>Reading the results</h2>
+    <p>Every hit is rated, so a watermark does not get lost among emoji
+      joiners.</p>
+    <div class="sev"><span class="dot" style="background:var(--info)"></span>
+      <span class="lbl">info</span><span class="txt">Annotated and almost
+      certainly legitimate: a BOM at the start of a file, an emoji joiner, a
+      presentation selector, French spacing, digit grouping.</span></div>
+    <div class="sev"><span class="dot" style="background:var(--low)"></span>
+      <span class="lbl">low</span><span class="txt">Nonstandard whitespace with
+      no particular explanation. Genuinely common in word-processor and
+      typeset text.</span></div>
+    <div class="sev"><span class="dot" style="background:var(--med)"></span>
+      <span class="lbl">medium</span><span class="txt">Unexplained invisibles:
+      zero-width characters, format controls, variation selectors, direction
+      marks. Nothing accounts for these in ordinary prose.</span></div>
+    <div class="sev"><span class="dot" style="background:var(--high)"></span>
+      <span class="lbl">high</span><span class="txt">The classes used in
+      attacks: bidirectional overrides and isolates that reorder what you read,
+      and the Tags block used for smuggling and prompt injection.</span></div>
+    <h3>Categories</h3>
+    <p>Six by default — zero-width, invisible format, bidi, variation selector,
+      tag, and nonstandard whitespace — plus a seventh, opt-in category in the
+      command line tool covering every remaining Unicode default-ignorable code
+      point, for forensic work.</p>
+    <div class="callout warn">Context matters more than the count. Nonstandard
+      whitespace is ordinary in professionally typeset documents; bidirectional
+      controls are ordinary in Arabic and Hebrew. That a character is present
+      is a fact. What it means is your call, which is why markcheck shows you
+      the evidence instead of a verdict.</div>
+  </section>
+
+  <section class="card glass" id="cli">
+    <h2>The command line tool</h2>
+    <p>The same scanner, for files, pipelines, and CI. One Python file,
+      standard library only, no dependencies.</p>
+    <pre><code>pip install markcheck
+markcheck essay.md</code></pre>
+    <p>Exit codes make it a linter: <code>0</code> clean, <code>1</code> hidden
+      characters found, <code>2</code> a usage or I/O error.</p>
+    <pre><code>markcheck *.md --suspicious-only     # skip the benign annotations
+markcheck notes.md --strip           # write notes.clean.md
+markcheck report.md --json           # machine-readable output
+cat file.txt | markcheck --strip --stdout &gt; clean.txt</code></pre>
+    <p>This page is generated from the same character tables the command line
+      tool uses, and a parity test proves the two agree on every hit, position,
+      name, note, severity, and cleaned result.</p>
+  </section>
+
+  <section class="card glass" id="trust">
+    <h2>Why you can check rather than trust</h2>
+    <p>A tool that inspects your writing for hidden marks is asking for a lot
+      of trust. The point of the design is that you should not have to give
+      much.</p>
+    <div class="yes"><span><strong>It is open source.</strong> MIT licensed,
+      every line readable on GitHub, including the page you are reading.</span></div>
+    <div class="yes"><span><strong>The privacy claim is enforced, not
+      asserted.</strong> <code>connect-src 'none'</code> is checked by your
+      browser, not by us.</span></div>
+    <div class="yes"><span><strong>It has no dependencies.</strong> Standard
+      library only, so there is no supply chain to compromise and nothing to
+      audit but the tool itself.</span></div>
+    <div class="yes"><span><strong>It cannot drift.</strong> This page is
+      generated from the Python module; a differential test runs both
+      implementations over more than fifteen hundred cases and fails the build
+      if they ever disagree.</span></div>
+    <div class="yes"><span><strong>Its coverage is checked against the
+      specification.</strong> A frozen Unicode dataset is the reference the
+      curated list is tested against, so a gap fails a test rather than sitting
+      unnoticed.</span></div>
+    <div class="yes"><span><strong>It states its limits.</strong> Everything on
+      this page about what markcheck cannot do is there because a tool that
+      overstates its reach is worse than no tool.</span></div>
+  </section>
+
+  <footer>
+    markcheck __VERSION__ &middot; MIT licensed &middot;
+    <a href="https://github.com/MavProDev/markcheck" rel="noopener noreferrer">source
+    on GitHub</a><br>
+    <a href="index.html">Scanner</a> &middot;
+    <a href="changelog.html">Patch notes</a>
+  </footer>
+</main>
+
+<script>
+const saved = (function () {
+  try { return localStorage.getItem("markcheck-theme"); } catch (e) { return null; }
+})();
+if (saved) { document.documentElement.setAttribute("data-theme", saved); }
+document.getElementById("theme").addEventListener("click", function () {
+  const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const current = document.documentElement.getAttribute("data-theme") ||
+    (dark ? "dark" : "light");
+  const next = current === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem("markcheck-theme", next); } catch (e) { /* private */ }
+});
+</script>
+</body>
+</html>

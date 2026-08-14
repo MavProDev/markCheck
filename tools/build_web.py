@@ -152,13 +152,33 @@ def changelog_html(markdown):
     return "\n".join(out)
 
 
+def _template(name):
+    """Read a template and substitute the shared design system into it.
+
+    The palette, glass, nav, hero, and accessibility rules live in one file so
+    the generated pages cannot drift apart in look or motion, the same reason
+    the character tables are generated rather than duplicated.
+    """
+    page = open(os.path.join(HERE, name), encoding="utf-8").read()
+    css = open(os.path.join(HERE, "shared.css"), encoding="utf-8").read()
+    return page.replace("__SHARED_CSS__", css.rstrip("\n"))
+
+
 def build_changelog():
     body = changelog_html(
         open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8").read())
-    page = open(os.path.join(HERE, "changelog.template.html"),
-                encoding="utf-8").read()
-    out = page.replace("__BODY__", body).replace("__VERSION__", m.__version__)
+    out = _template("changelog.template.html").replace(
+        "__BODY__", body).replace("__VERSION__", m.__version__)
     dest = os.path.join(ROOT, "web", "changelog.html")
+    with open(dest, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(out)
+    return dest, len(out)
+
+
+def build_about():
+    out = _template("about.template.html").replace(
+        "__VERSION__", m.__version__)
+    dest = os.path.join(ROOT, "web", "about.html")
     with open(dest, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(out)
     return dest, len(out)
@@ -184,3 +204,5 @@ if __name__ == "__main__":
     print(f"wrote {path} ({size} bytes) from markcheck {m.__version__}")
     path, size = build_changelog()
     print(f"wrote {path} ({size} bytes) from CHANGELOG.md")
+    path, size = build_about()
+    print(f"wrote {path} ({size} bytes)")

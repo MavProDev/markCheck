@@ -1,5 +1,47 @@
 # Changelog
 
+## 2.2.0
+Adds an "About this tool" page. No scanner changes: the engine, the CLI, and
+the parity suite are untouched.
+
+### Added
+- **`web/about.html`** — what markcheck is, what happens to your text, what it
+  deliberately cannot do, how to use it, how to read the severity ratings, the
+  command line tool, and why you can verify the privacy claim rather than take
+  it on trust. Generated like the other pages and gated in CI.
+- The privacy section is the point of it: it explains that `connect-src 'none'`
+  is *enforced by the browser rather than promised by us*, is explicit that the
+  visit counter stores a single integer and no IP address, user agent, or
+  per-visitor record, and invites the reader to confirm all of it in their own
+  network tab or with the wifi off.
+- A contents strip that jumps to each section, and cross-links between the
+  three pages.
+
+### Changed
+- The design tokens, glass, header, hero, footer, and the reduced-motion,
+  reduced-transparency, and increased-contrast rules now live in
+  `tools/shared.css` and are substituted into the generated pages at build
+  time, instead of being copy-pasted per template. The scanner page keeps its
+  own stylesheet deliberately: it has diverged for real reasons (severity
+  colours, glass tuned around an 8,000-node preview) and the parity harness
+  slices the engine out of that file by string offsets, so deduplicating it
+  would risk the shipped scanner to save repetition in a generated file.
+
+### Fixed
+- The contents strip on the about page is a `<nav>`, so it inherited the sticky
+  glass header treatment and rendered as a grey slab across the page. The
+  header rules are now scoped to `body > nav`. Caught by looking at a
+  screenshot; the automated checks passed straight over it.
+
+### Tests
+- A leak guard across all three generated pages: no email address, no outbound
+  URL other than the public repository, and no commit trailer. It matches on
+  what a leak actually looks like rather than on substrings, since CSS is full
+  of `@media` and every page carries an `http-equiv` meta tag.
+- A check that no page ships an unsubstituted template marker.
+- The browser pass now covers the about page in both themes and on a phone,
+  asserting every contents link resolves to a real section.
+
 ## 2.1.0
 A visual and functional overhaul of the browser build. The scanner engine is
 untouched — the Python/JavaScript parity suite passes unchanged — so this is

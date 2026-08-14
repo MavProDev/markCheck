@@ -280,6 +280,11 @@ onto the page (read locally, never uploaded), open a command palette with
 page adapts to light and dark, and honours reduced-motion, reduced-transparency,
 and increased-contrast settings.
 
+`web/about.html` is the transparency and how-to page: what the tool is, what
+happens to your text, what it deliberately cannot do, how to use it, how to
+read the severity ratings, and why you can verify the privacy claim rather than
+take it on trust.
+
 `web/changelog.html` is the patch-notes page, generated from `CHANGELOG.md` at
 build time by the same script. It is never hand-edited, and it is generated from
 that file alone — never from git history, whose commit trailers carry addresses

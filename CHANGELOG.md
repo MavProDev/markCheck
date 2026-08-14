@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.2.1
+No behaviour changes. Two claims this project makes about itself were resting
+on my word rather than on a check, so they are now checked.
+
+### Verification
+- **The frozen Unicode table is verified against the property's own
+  definition.** `DEFAULT_IGNORABLE` was transcribed from
+  DerivedCoreProperties.txt, and a transcription is exactly the kind of thing
+  that is quietly wrong. A test now rebuilds the set from the derivation UAX #44
+  publishes — Other_Default_Ignorable_Code_Point + Cf + Variation_Selector,
+  minus White_Space, the interlinear annotation characters, the Egyptian
+  hieroglyph format controls, and the prepended concatenation marks — and
+  asserts the two agree exactly. `Cf` and `White_Space` come from the
+  interpreter, so the two sides share no data and agreement means something.
+  They match on all 4,174 code points. A future Unicode release that adds a
+  format character none of the exclusions cover will now fail the test rather
+  than drift silently.
+- **The deployment function is tested in every storage state.** `web/api/index.js`
+  only ever runs on Vercel, which made it the one piece nobody would see fail
+  until it was live. `tools/check_api.js` now drives it directly: the count is
+  injected when storage answers, and the page is still served with the counter
+  hidden when storage is unconfigured, returns an error, throws, or answers with
+  something that is not a number. A source check asserts the function never
+  reads `req.headers`, `x-forwarded-for`, `remoteAddress`, or the user agent, so
+  the promise that no visitor metadata is collected is enforced rather than
+  merely documented. Wired into CI.
+
+Still unproven, and stated plainly: Vercel's `/` → `/api/index` rewrite cannot
+be exercised without a deployment. The function's behaviour is covered; the
+platform wiring is not.
+
 ## 2.2.0
 Adds an "About this tool" page. No scanner changes: the engine, the CLI, and
 the parity suite are untouched.

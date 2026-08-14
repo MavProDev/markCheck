@@ -224,6 +224,12 @@ Unicode character scanner.">
     <p>Every release, what changed, and why.</p>
   </header>
 
+<section class="card glass release"><h2><span class="ver">2.2.1</span></h2>
+<p>No behaviour changes. Two claims this project makes about itself were resting on my word rather than on a check, so they are now checked.</p>
+<h3 class="tagline">Verification</h3>
+<ul><li><strong>The frozen Unicode table is verified against the property's own definition.</strong> <code>DEFAULT_IGNORABLE</code> was transcribed from DerivedCoreProperties.txt, and a transcription is exactly the kind of thing that is quietly wrong. A test now rebuilds the set from the derivation UAX #44 publishes — Other_Default_Ignorable_Code_Point + Cf + Variation_Selector, minus White_Space, the interlinear annotation characters, the Egyptian hieroglyph format controls, and the prepended concatenation marks — and asserts the two agree exactly. <code>Cf</code> and <code>White_Space</code> come from the interpreter, so the two sides share no data and agreement means something. They match on all 4,174 code points. A future Unicode release that adds a format character none of the exclusions cover will now fail the test rather than drift silently.</li><li><strong>The deployment function is tested in every storage state.</strong> <code>web/api/index.js</code> only ever runs on Vercel, which made it the one piece nobody would see fail until it was live. <code>tools/check_api.js</code> now drives it directly: the count is injected when storage answers, and the page is still served with the counter hidden when storage is unconfigured, returns an error, throws, or answers with something that is not a number. A source check asserts the function never reads <code>req.headers</code>, <code>x-forwarded-for</code>, <code>remoteAddress</code>, or the user agent, so the promise that no visitor metadata is collected is enforced rather than merely documented. Wired into CI.</li></ul>
+<p>Still unproven, and stated plainly: Vercel's <code>/</code> → <code>/api/index</code> rewrite cannot be exercised without a deployment. The function's behaviour is covered; the platform wiring is not.</p>
+</section>
 <section class="card glass release"><h2><span class="ver">2.2.0</span></h2>
 <p>Adds an &quot;About this tool&quot; page. No scanner changes: the engine, the CLI, and the parity suite are untouched.</p>
 <h3 class="tagline">Added</h3>
@@ -291,7 +297,7 @@ Unicode character scanner.">
 </section>
 
   <footer>
-    markcheck 2.2.0 &middot; MIT licensed &middot;
+    markcheck 2.2.1 &middot; MIT licensed &middot;
     <a href="https://github.com/MavProDev/markcheck" rel="noopener noreferrer">source
     on GitHub</a><br>
     Generated from CHANGELOG.md at build time; never edited by hand.

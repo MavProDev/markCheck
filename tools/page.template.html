@@ -163,6 +163,9 @@ const $ = function (id) { return document.getElementById(id); };
 // table always describe the whole text.
 const PREVIEW_LIMIT = 8000;
 const TABLE_LIMIT = 300;
+// Cap stored hit records so a very large paste that is mostly hidden
+// characters cannot grow an unbounded array; the count stays exact.
+const SCAN_LIMIT = 200000;
 const DEBOUNCE_MS = 150;
 
 function escapeHtml(s) {
@@ -206,11 +209,13 @@ function render() {
     copyBtn.disabled = true;
     return;
   }
-  const hits = scan(text, ALL);
+  const result = scan(text, ALL, SCAN_LIMIT);
+  const hits = result.hits;
+  const total = result.total;
   const chars = Array.from(text);
-  copyBtn.disabled = hits.length === 0;
+  copyBtn.disabled = total === 0;
 
-  if (!hits.length) {
+  if (!total) {
     out.innerHTML =
       '<div class="verdict clean"><span class="count">Clean.</span> ' +
       "No hidden characters in " + plural(chars.length, "character") + ". " +
@@ -226,8 +231,13 @@ function render() {
   }).join(" ");
 
   let html = '<div class="verdict found"><span class="count">' +
-    plural(hits.length, "hidden character") + "</span> in " +
+    plural(total, "hidden character") + "</span> in " +
     plural(chars.length, "character") + ".<br>" + chips + "</div>";
+  if (result.capped) {
+    html += '<p class="note">List capped at ' +
+      hits.length.toLocaleString() + " of " + total.toLocaleString() +
+      " to bound memory; the table and preview cover those.</p>";
+  }
 
   html += '<div class="scroll"><table><thead><tr><th>Where</th>' +
     "<th>Code point</th><th>Name</th><th>Category</th></tr></thead><tbody>";
@@ -240,9 +250,9 @@ function render() {
       "</td><td><span class='tag'>" + h.category + "</span></td></tr>";
   });
   html += "</tbody></table></div>";
-  if (hits.length > TABLE_LIMIT) {
+  if (total > TABLE_LIMIT) {
     html += '<p class="note">Showing the first ' + TABLE_LIMIT + " of " +
-      hits.length.toLocaleString() + ".</p>";
+      total.toLocaleString() + ".</p>";
   }
 
   html += '<p class="note">Where they sit in your text:</p>' +

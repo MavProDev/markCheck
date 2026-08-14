@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from contextlib import redirect_stdout
 
 import markcheck as m
@@ -39,7 +40,7 @@ SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 TRACKED = sorted(
     list(m._SINGLE)
     + list(m._WHITESPACE)
-    + list(range(0x180B, 0x180E))
+    + list(range(0x180B, 0x180E)) + [0x180F]
     + list(range(0xFE00, 0xFE10))
     + [0xE0001] + list(range(0xE0020, 0xE0080))
 )
@@ -171,13 +172,19 @@ class TestDecode(unittest.TestCase):
         self.assertEqual((text, enc), ("\ufeffhi", "utf-8"))
         self.assertIn("BOM", m.scan(text, ALL).hits[0]["note"])
 
-    def test_utf16_bom(self):
-        self.assertEqual(m._decode("hi\u200b".encode("utf-16"), "x"),
-                         ("hi\u200b", "utf-16"))
+    def test_utf16_bom_records_exact_byte_order(self):
+        # The label must record byte order, not just the family, so --strip
+        # can write the file back without flipping BE to native LE.
+        le = b"\xff\xfe" + "hi\u200b".encode("utf-16-le")
+        be = b"\xfe\xff" + "hi\u200b".encode("utf-16-be")
+        self.assertEqual(m._decode(le, "x"), ("hi\u200b", "utf-16-le"))
+        self.assertEqual(m._decode(be, "x"), ("hi\u200b", "utf-16-be"))
 
-    def test_utf32_bom(self):
-        self.assertEqual(m._decode("hi".encode("utf-32"), "x"),
-                         ("hi", "utf-32"))
+    def test_utf32_bom_records_exact_byte_order(self):
+        le = b"\xff\xfe\x00\x00" + "hi".encode("utf-32-le")
+        be = b"\x00\x00\xfe\xff" + "hi".encode("utf-32-be")
+        self.assertEqual(m._decode(le, "x"), ("hi", "utf-32-le"))
+        self.assertEqual(m._decode(be, "x"), ("hi", "utf-32-be"))
 
     def test_invalid_bytes_raise_sourceerror(self):
         with self.assertRaises(m.SourceError):
@@ -208,9 +215,11 @@ class TestMainInProcess(unittest.TestCase):
     def test_exit_codes(self):
         with tempfile.TemporaryDirectory() as d:
             f = os.path.join(d, "t.md")
-            open(f, "w", encoding="utf-8").write("clean text")
+            with open(f, "w", encoding="utf-8") as fh:
+                fh.write("clean text")
             self.assertEqual(self._run([f])[0], 0)
-            open(f, "w", encoding="utf-8").write("bad\u200btext")
+            with open(f, "w", encoding="utf-8") as fh:
+                fh.write("bad\u200btext")
             self.assertEqual(self._run([f])[0], 1)
             self.assertEqual(self._run([os.path.join(d, "nope")])[0], 2)
 
@@ -226,32 +235,41 @@ class TestMainInProcess(unittest.TestCase):
 
 
 class TestStripSafety(unittest.TestCase):
+    def _write(self, path, text, encoding="utf-8"):
+        with open(path, "w", encoding=encoding) as fh:
+            fh.write(text)
+
+    def _read(self, path, encoding="utf-8"):
+        with open(path, encoding=encoding) as fh:
+            return fh.read()
+
     def test_in_place_writes_backup(self):
         with tempfile.TemporaryDirectory() as d:
             f = os.path.join(d, "p.txt")
-            open(f, "w", encoding="utf-8").write("x\u200by")
+            self._write(f, "x\u200by")
             m.main([f, "--strip", "--in-place"])
-            self.assertEqual(open(f, encoding="utf-8").read(), "xy")
-            self.assertEqual(open(f + ".bak", encoding="utf-8").read(),
-                             "x\u200by")
+            self.assertEqual(self._read(f), "xy")
+            self.assertEqual(self._read(f + ".bak"), "x\u200by")
 
     def test_in_place_refuses_to_clobber_backup(self):
         with tempfile.TemporaryDirectory() as d:
             f = os.path.join(d, "p.txt")
-            open(f, "w", encoding="utf-8").write("x\u200by")
-            open(f + ".bak", "w", encoding="utf-8").write("PRECIOUS")
-            m.main([f, "--strip", "--in-place"])
+            self._write(f, "x\u200by")
+            self._write(f + ".bak", "PRECIOUS")
+            with redirect_stdout(io.StringIO()):
+                code = m.main([f, "--strip", "--in-place"])
+            # a refused write is an error, not a silent no-op: exit code 2
+            self.assertEqual(code, 2)
             # backup untouched, original NOT stripped
-            self.assertEqual(open(f + ".bak", encoding="utf-8").read(),
-                             "PRECIOUS")
-            self.assertEqual(open(f, encoding="utf-8").read(), "x\u200by")
+            self.assertEqual(self._read(f + ".bak"), "PRECIOUS")
+            self.assertEqual(self._read(f), "x\u200by")
 
     def test_in_place_preserves_mode(self):
         if os.name != "posix":
             self.skipTest("POSIX mode bits")
         with tempfile.TemporaryDirectory() as d:
             f = os.path.join(d, "s.txt")
-            open(f, "w", encoding="utf-8").write("x\u200by")
+            self._write(f, "x\u200by")
             os.chmod(f, 0o600)
             m.main([f, "--strip", "--in-place"])
             self.assertEqual(os.stat(f).st_mode & 0o777, 0o600)
@@ -260,10 +278,9 @@ class TestStripSafety(unittest.TestCase):
     def test_clean_copy_default(self):
         with tempfile.TemporaryDirectory() as d:
             f = os.path.join(d, "p.md")
-            open(f, "w", encoding="utf-8").write("x\u200by")
+            self._write(f, "x\u200by")
             m.main([f, "--strip"])
-            self.assertEqual(open(os.path.join(d, "p.clean.md"),
-                                  encoding="utf-8").read(), "xy")
+            self.assertEqual(self._read(os.path.join(d, "p.clean.md")), "xy")
 
 
 @unittest.skipIf(os.name == "posix" and not hasattr(os, "fork"),
@@ -488,7 +505,8 @@ class TestCaps(unittest.TestCase):
     def test_max_bytes_refuses_large_file(self):
         with tempfile.TemporaryDirectory() as d:
             f = os.path.join(d, "big.txt")
-            open(f, "w", encoding="utf-8").write("x" * 5000)
+            with open(f, "w", encoding="utf-8") as fh:
+                fh.write("x" * 5000)
             buf = io.StringIO()
             with redirect_stdout(buf):
                 code = m.main([f, "--max-bytes", "1000"])
@@ -497,13 +515,113 @@ class TestCaps(unittest.TestCase):
     def test_max_bytes_zero_allows(self):
         with tempfile.TemporaryDirectory() as d:
             f = os.path.join(d, "ok.txt")
-            open(f, "w", encoding="utf-8").write("x" * 5000)
+            with open(f, "w", encoding="utf-8") as fh:
+                fh.write("x" * 5000)
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(m.main([f, "--max-bytes", "0"]), 0)
 
     def test_negative_caps_error(self):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(m.main(["x", "--max-hits", "-1"]), 2)
+
+
+@unittest.skipIf(os.name == "posix" and not hasattr(os, "fork"),
+                 "platform cannot spawn subprocesses (e.g. iOS)")
+class TestOutputContract(unittest.TestCase):
+    """Exact output-stream contracts (audit findings F-01, F-02)."""
+
+    def test_strip_stdout_is_data_only(self):
+        # F-01: stdout must be byte-for-byte the cleaned document, with no
+        # report text mixed in. assertIn is not enough; assert exact equality.
+        code, out, err = run_cli(["-", "--strip", "--stdout"], "a​b")
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "ab")
+        self.assertNotIn("Source:", out)
+        # the human report is still available, on stderr
+        self.assertIn("Source:", err)
+
+    def test_strip_stdout_clean_input_is_empty(self):
+        code, out, _ = run_cli(["-", "--strip", "--stdout"], "clean")
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "clean")
+
+    def test_json_and_stdout_are_mutually_exclusive(self):
+        # F-02: the combination cannot produce a coherent stream; reject it.
+        code, out, err = run_cli(["-", "--strip", "--stdout", "--json"], "a​b")
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("mutually exclusive", err)
+
+
+class TestFvs4(unittest.TestCase):
+    """F-05: U+180F MONGOLIAN FREE VARIATION SELECTOR FOUR is in scope."""
+
+    def test_fvs4_classified_as_variation_selector(self):
+        name, category = m.classify(0x180F)
+        self.assertEqual(category, "variation-selector")
+        self.assertEqual(name, "MONGOLIAN FREE VARIATION SELECTOR FOUR")
+
+    def test_fvs4_detected_in_scan(self):
+        hits = m.scan("a᠏b", ALL).hits
+        self.assertEqual([h["codepoint"] for h in hits], [0x180F])
+
+    def test_vowel_separator_stays_invisible_format(self):
+        # U+180E sits inside the FVS range but must remain invisible-format;
+        # classify checks the single-codepoint table first.
+        self.assertEqual(m.classify(0x180E)[1], "invisible-format")
+
+
+class TestEndiannessPreserved(unittest.TestCase):
+    """F-03: --strip preserves exact byte order; backups are byte-for-byte."""
+
+    def _strip_in_place(self, raw):
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "t.txt")
+            with open(f, "wb") as fh:
+                fh.write(raw)
+            with redirect_stdout(io.StringIO()):
+                m.main([f, "--strip", "--in-place"])
+            with open(f, "rb") as fh:
+                cleaned = fh.read()
+            with open(f + ".bak", "rb") as fh:
+                backup = fh.read()
+        return cleaned, backup
+
+    def test_utf16be_byte_order_preserved(self):
+        raw = b"\xfe\xff" + "a​b".encode("utf-16-be")
+        cleaned, backup = self._strip_in_place(raw)
+        self.assertTrue(cleaned.startswith(b"\xfe\xff"))
+        self.assertEqual(cleaned, b"\xfe\xff" + "ab".encode("utf-16-be"))
+        self.assertEqual(backup, raw)  # backup is byte-for-byte the original
+
+    def test_utf16le_byte_order_preserved(self):
+        raw = b"\xff\xfe" + "a​b".encode("utf-16-le")
+        cleaned, backup = self._strip_in_place(raw)
+        self.assertTrue(cleaned.startswith(b"\xff\xfe"))
+        self.assertEqual(cleaned, b"\xff\xfe" + "ab".encode("utf-16-le"))
+        self.assertEqual(backup, raw)
+
+    def test_utf32be_byte_order_preserved(self):
+        raw = b"\x00\x00\xfe\xff" + "a​b".encode("utf-32-be")
+        cleaned, backup = self._strip_in_place(raw)
+        self.assertTrue(cleaned.startswith(b"\x00\x00\xfe\xff"))
+        self.assertEqual(backup, raw)
+
+
+class TestBoundedFileRead(unittest.TestCase):
+    """F-07: the read is bounded even when the stat precheck is fooled."""
+
+    def test_read_rejects_when_getsize_underreports(self):
+        # Simulate a file that grew after the stat, or a special file whose
+        # size metadata lies: getsize says small, the bytes are large. The
+        # bounded read (max_bytes+1) must still reject.
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "grow.txt")
+            with open(f, "wb") as fh:
+                fh.write(b"x" * 2000)
+            with unittest.mock.patch("os.path.getsize", return_value=10):
+                with self.assertRaises(m.SourceError):
+                    m.read_source(f, max_bytes=1000)
 
 
 if __name__ == "__main__":

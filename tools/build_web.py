@@ -10,6 +10,7 @@ Usage: python3 tools/build_web.py
 """
 import json
 import os
+import re
 import sys
 import unicodedata
 
@@ -65,6 +66,102 @@ def tables():
     }
 
 
+def _escape(text):
+    return (text.replace("&", "&amp;").replace("<", "&lt;")
+                .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def _inline(text):
+    """Render the inline markdown subset the changelog actually uses.
+
+    Escaping happens first and formatting second, so nothing in CHANGELOG.md
+    can inject markup. Code spans are lifted out before the bold and italic
+    passes and put back afterwards, so an asterisk inside `--flag` stays
+    literal.
+    """
+    text = _escape(text)
+    spans = []
+
+    def stash(match):
+        spans.append(match.group(1))
+        return "\x00%d\x00" % (len(spans) - 1)
+
+    text = re.sub(r"`([^`]+)`", stash, text)
+    text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
+    text = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<em>\1</em>", text)
+    return re.sub(r"\x00(\d+)\x00",
+                  lambda m: "<code>%s</code>" % spans[int(m.group(1))], text)
+
+
+def changelog_html(markdown):
+    """Turn CHANGELOG.md into the body of the patch-notes page.
+
+    Only CHANGELOG.md is ever read. Git metadata is deliberately not a source:
+    commit trailers carry co-author addresses and session URLs that have no
+    business on a public page.
+    """
+    out = []
+    items = []
+    para = []
+
+    def flush():
+        if para:
+            out.append("<p>%s</p>" % _inline(" ".join(para)))
+            para.clear()
+        if items:
+            out.append("<ul>%s</ul>" %
+                       "".join("<li>%s</li>" % _inline(" ".join(li))
+                               for li in items))
+            items.clear()
+
+    for raw in markdown.splitlines():
+        line = raw.rstrip()
+        stripped = line.strip()
+        if not stripped:
+            flush()
+        elif stripped.startswith("# "):
+            flush()
+        elif stripped.startswith("## "):
+            flush()
+            if out:
+                out.append("</section>")
+            version = _escape(stripped[3:])
+            out.append('<section class="card glass release">'
+                       '<h2><span class="ver">%s</span></h2>' % version)
+        elif stripped.startswith("### "):
+            flush()
+            label = stripped[4:]
+            cls = " danger" if "breaking" in label.lower() else ""
+            out.append('<h3 class="tagline%s">%s</h3>' % (cls, _escape(label)))
+        elif stripped.startswith("- "):
+            if para:
+                flush()
+            items.append([stripped[2:]])
+        elif items and raw.startswith("  "):
+            # A wrapped continuation of the list item above it.
+            items[-1].append(stripped)
+        else:
+            if items:
+                flush()
+            para.append(stripped)
+    flush()
+    if out:
+        out.append("</section>")
+    return "\n".join(out)
+
+
+def build_changelog():
+    body = changelog_html(
+        open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8").read())
+    page = open(os.path.join(HERE, "changelog.template.html"),
+                encoding="utf-8").read()
+    out = page.replace("__BODY__", body).replace("__VERSION__", m.__version__)
+    dest = os.path.join(ROOT, "web", "changelog.html")
+    with open(dest, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(out)
+    return dest, len(out)
+
+
 def build():
     engine = open(os.path.join(HERE, "engine.template.js"),
                   encoding="utf-8").read()
@@ -83,3 +180,5 @@ def build():
 if __name__ == "__main__":
     path, size = build()
     print(f"wrote {path} ({size} bytes) from markcheck {m.__version__}")
+    path, size = build_changelog()
+    print(f"wrote {path} ({size} bytes) from CHANGELOG.md")

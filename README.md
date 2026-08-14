@@ -272,6 +272,20 @@ hiding in it. It runs entirely in the browser, so no text is uploaded, stored,
 or logged. Useful for anyone who does not live in a terminal, including
 students, teachers, editors, and hiring teams.
 
+It carries the severity model from the CLI: hits are colour-coded, and a
+**Suspicious only** switch applies the same `--min-severity medium` filter, so
+a conservative clean will not break emoji sequences. You can drop a text file
+onto the page (read locally, never uploaded), open a command palette with
+`⌘K` / `Ctrl-K`, compare before and after, and export the findings as JSON. The
+page adapts to light and dark, and honours reduced-motion, reduced-transparency,
+and increased-contrast settings.
+
+`web/changelog.html` is the patch-notes page, generated from `CHANGELOG.md` at
+build time by the same script. It is never hand-edited, and it is generated from
+that file alone — never from git history, whose commit trailers carry addresses
+and session URLs that have no business on a public page. A test asserts the
+rendered page contains no address, URL, or commit trailer.
+
 The page is generated from `markcheck.py` by `tools/build_web.py`, never
 edited by hand, and `tools/check_parity.py` proves the two implementations
 agree across 1530 cases on every hit, position, name, note, severity, and
@@ -281,11 +295,41 @@ The page ships a restrictive Content-Security-Policy. `connect-src 'none'` is
 what technically backs the "nothing is uploaded" claim: the page cannot make a
 network request even if it wanted to. One caveat worth stating plainly:
 `frame-ancestors` is **ignored** when a policy is delivered in a `<meta>` tag,
-so it is not included there. If you host this page and want clickjacking
-protection, send it as an HTTP response header:
+so it is not included there. It is sent as an HTTP response header instead,
+along with the rest of the security headers, by `web/vercel.json`.
 
-```
-Content-Security-Policy: frame-ancestors 'none'
+### Deployment and the visitor counter
+
+`web/vercel.json` and `web/api/index.js` exist only for the hosted copy; neither
+is needed to use the page. The function serves `/`, substituting a visit count
+into the HTML **on the server**. That ordering is the whole point: a counter the
+browser fetched would falsify `connect-src 'none'`, so the number is already in
+the document when it arrives and the browser makes no extra request.
+
+What is stored is a single integer. No IP address, no user agent, no
+per-visitor row, no timestamp — there is nothing recorded that could tie a visit
+to a person. If the datastore is unreachable or unconfigured, the page is served
+exactly as normal with the counter simply absent; the counter can never take the
+site down. Opening `web/index.html` from disk behaves the same way, which is why
+the offline promise still holds.
+
+Configure it with two environment variables, `SUPABASE_URL` and
+`SUPABASE_SERVICE_KEY`, and this in the database:
+
+```sql
+create table if not exists site_stats (
+  key text primary key,
+  count bigint not null default 0
+);
+insert into site_stats (key, count) values ('visits', 0)
+  on conflict (key) do nothing;
+alter table site_stats enable row level security;   -- no public access
+
+create or replace function increment_visits() returns bigint
+  language sql security definer as $$
+    update site_stats set count = count + 1 where key = 'visits'
+    returning count;
+  $$;
 ```
 
 ```bash

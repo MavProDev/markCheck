@@ -10,6 +10,7 @@ import random
 import subprocess
 import sys
 import tempfile
+import unicodedata
 import unittest
 import unittest.mock
 from contextlib import redirect_stdout
@@ -729,6 +730,55 @@ class TestDefaultIgnorableOracle(unittest.TestCase):
             self.assertGreater(lo, prev_hi, f"overlap at U+{lo:04X}")
             self.assertLess(hi, 0x110000)
             prev_hi = hi
+
+    def test_table_matches_the_property_derivation(self):
+        """Check the frozen table against how UAX #44 defines the property.
+
+        The table was transcribed from DerivedCoreProperties.txt, and a
+        transcription is exactly the kind of thing that is quietly wrong. This
+        rebuilds the set from the published derivation instead:
+
+            Other_Default_Ignorable_Code_Point + Cf + Variation_Selector
+            - White_Space - FFF9..FFFB - Egyptian hieroglyph format controls
+            - Prepended_Concatenation_Mark
+
+        Cf and White_Space come from the interpreter, so the two sides share no
+        data and agreement is meaningful. The remaining inputs are small, fixed
+        enumerations that the standard lists explicitly.
+
+        A future Unicode release that adds a format character not covered by
+        one of the exclusions will fail here. That is the point: it means the
+        pinned table needs a deliberate bump, not a silent drift.
+        """
+        other_di = (
+            {0x034F, 0x2065, 0x3164, 0xFFA0, 0xE0000}
+            | set(range(0x115F, 0x1161)) | set(range(0x17B4, 0x17B6))
+            | set(range(0xFFF0, 0xFFF9)) | set(range(0xE0002, 0xE0020))
+            | set(range(0xE0080, 0xE0100)) | set(range(0xE01F0, 0xE1000)))
+        variation_selector = (
+            set(range(0x180B, 0x180E)) | {0x180F}
+            | set(range(0xFE00, 0xFE10)) | set(range(0xE0100, 0xE01F0)))
+        prepended_marks = (
+            set(range(0x0600, 0x0606)) | {0x06DD, 0x070F, 0x08E2}
+            | set(range(0x0890, 0x0892)) | {0x110BD, 0x110CD})
+        egyptian_format = set(range(0x13430, 0x13440))
+
+        fmt = {cp for cp in range(0x110000)
+               if unicodedata.category(chr(cp)) == "Cf"}
+        space = {cp for cp in range(0x110000) if chr(cp).isspace()}
+        derived = ((other_di | fmt | variation_selector) - space
+                   - set(range(0xFFF9, 0xFFFC)) - egyptian_format
+                   - prepended_marks)
+
+        frozen = {cp for lo, hi in m.DEFAULT_IGNORABLE
+                  for cp in range(lo, hi + 1)}
+        self.assertEqual(
+            sorted(derived - frozen), [],
+            "the derivation finds default-ignorable code points the frozen "
+            "table is missing")
+        self.assertEqual(
+            sorted(frozen - derived), [],
+            "the frozen table claims code points the derivation does not")
 
     def test_curated_taxonomy_gaps_are_exactly_as_documented(self):
         default = set(m.DEFAULT_CATEGORIES)

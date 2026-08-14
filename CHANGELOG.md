@@ -1,5 +1,90 @@
 # Changelog
 
+## 2.0.0
+Completes the external engineering audit backlog: the remaining product,
+forensic, and polish items on top of the 1.7.0 hardening pass. Major version
+because two behaviours changed in ways a script could notice; see Migration.
+
+### Added
+- **Severity model.** Every hit is now rated `info`, `low`, `medium`, or
+  `high`. Annotated likely-legitimate uses (BOM at file start, emoji ZWJ,
+  presentation selectors, French spacing, digit grouping) are `info`; bidi
+  embeddings/overrides/isolates and the Tags block are `high`. New
+  `--min-severity LEVEL` and `--suspicious-only` (shorthand for
+  `--min-severity medium`). The filter narrows *scope*, not just display: the
+  exit code and `--strip` follow it, so `--suspicious-only --strip` is a
+  conservative cleanup that will not break emoji sequences. JSON gains a
+  `severity` field per hit and a top-level `min_severity`, both additive.
+- **Forensic mode.** `--include-default-ignorables` enables a seventh, opt-in
+  `default-ignorable` category covering every remaining Unicode
+  `Default_Ignorable_Code_Point`, including reserved ranges. Off by default so
+  the curated taxonomy keeps its signal-to-noise ratio.
+- **Specification oracle.** A frozen `Default_Ignorable_Code_Point` table
+  (pinned Unicode version, independent of the running interpreter) is now the
+  reference the curated taxonomy is tested against. Parity proves Python and
+  JavaScript agree; it cannot prove the shared taxonomy is complete, which is
+  how U+180F stayed missing. A conformance test now asserts the exact set of
+  documented gaps, so a future omission fails a test instead of passing
+  silently.
+- `--force` to overwrite an existing `FILE.clean.EXT`.
+- `tools/benchmark.py`, a non-gating harness reporting wall-clock and peak
+  memory across ordinary, newline-dense, mostly-hidden, and mixed-Unicode
+  corpora.
+- A man page and bash/zsh completions, generated from the argparse parser by
+  `tools/build_docs.py` and diff-gated in CI, so a new flag cannot ship with
+  stale docs.
+
+### Fixed
+- **U+180F was named inconsistently across Python versions.** Its name was
+  resolved through `unicodedata`, but the code point was added in Unicode 14.0,
+  so on Python 3.9/3.10 (which bundle Unicode 13.0) the lookup missed and fell
+  back to a generic label while the generated browser build reported the real
+  name. The Mongolian free variation selectors are now named from an explicit
+  table. Introduced in 1.7.0.
+- **Browser and CLI advisory notes could disagree on digits.** The browser
+  approximated Python's `str.isdigit()` with the `Nd`/`No` Unicode categories,
+  which is wrong in both directions: U+00BC is `No` but not a digit, and 128
+  digits are outside `Nd`. An exact range table is now generated from CPython,
+  and the parity suite covers the edge cases.
+- Backup creation no longer has a check-then-write race: the `.bak` name is
+  claimed with an atomic exclusive create, so two concurrent runs cannot both
+  conclude no backup exists.
+- Atomic writes now fsync the containing directory, so the rename itself is
+  durable and not just the file contents.
+- `--in-place` on stdin, a repeated `-` source, `--force` without `--strip`, and
+  `--suspicious-only` combined with `--min-severity` are now rejected with a
+  clear message instead of being silently ignored or ambiguous.
+- The browser page no longer lists `frame-ancestors` in its meta CSP. The spec
+  ignores that directive when the policy is delivered in a `<meta>` element, so
+  listing it implied a clickjacking protection that never existed. It is now
+  documented as an HTTP response header instead. `connect-src 'none'`, which is
+  what backs the privacy claim, is unchanged and remains effective.
+
+### Changed (breaking)
+- **`--strip` no longer silently overwrites an existing `FILE.clean.EXT`.** It
+  refuses with exit code 2. This matches the existing `.bak` behaviour, where
+  refusing to clobber is already the rule.
+  *Migration*: pass `--force` to restore the old overwrite behaviour.
+- **A closed pipe is no longer reported as success.** `BrokenPipeError` used to
+  be caught and turned into exit 0, so `markcheck f.md | head` claimed success
+  even when hidden characters were found. On POSIX, markcheck now uses default
+  SIGPIPE handling and terminates with the conventional 141; on Windows, the
+  fallback path returns 2 rather than 0.
+  *Migration*: a pipeline that relied on exit 0 from a truncated run should
+  check for 141, or avoid closing the pipe early.
+
+### Documentation
+- Performance claims are now backed by `tools/benchmark.py` and stated
+  honestly: ~3.4x input size in peak memory for ordinary prose with sparse
+  hits, but that is not a bound — pathological hidden-heavy input reaches ~140x
+  uncapped, and `--max-hits` is what bounds the worst case. Throughput is
+  hardware-dependent and quoted as a measured range.
+- Vendor attribution wording softened: markcheck no longer restates any
+  vendor's explanation of a watermark or training artifact as settled fact, and
+  points readers to first-party sources.
+- Documented the metadata boundary of atomic replacement (permission bits are
+  preserved; ownership, timestamps, ACLs, and xattrs are not).
+
 ## 1.7.0
 Hardening release from an external engineering audit. No redesign; the
 architecture, scope, and zero-dependency model are unchanged. Fixes several

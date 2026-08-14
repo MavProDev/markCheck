@@ -16,23 +16,45 @@ function classify(cp) {
   }
   // Mongolian free variation selectors. U+180E (VOWEL SEPARATOR) falls in
   // this span but is handled by T.SINGLES above, so it is skipped here.
-  if ((cp >= 0x180B && cp <= 0x180D) || cp === 0x180F) {
-    const words = { 0x180B: "ONE", 0x180C: "TWO", 0x180D: "THREE",
-                    0x180F: "FOUR" };
-    return { name: "MONGOLIAN FREE VARIATION SELECTOR " + words[cp],
-             category: "variation-selector" };
-  }
+  const fvs = T.FVS[cp];
+  if (fvs) return { name: fvs, category: "variation-selector" };
   const tag = T.TAGS[cp];
   if (tag) return { name: tag, category: "tag" };
   const w = T.WS[cp];
   if (w) return { name: w, category: "whitespace" };
+  if (inRanges(cp, T.DI)) {
+    return { name: T.DI_NAME, category: "default-ignorable" };
+  }
   return null;
 }
 
-// Mirrors markcheck._note. isDigit approximates Python str.isdigit via the
-// Unicode Nd and No properties; the difference affects an advisory note only,
-// never whether a character is reported.
-function isDigit(ch) { return ch !== "" && /[\p{Nd}\p{No}]/u.test(ch); }
+function inRanges(cp, ranges) {
+  let lo = 0, hi = ranges.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (cp < ranges[mid][0]) { hi = mid - 1; }
+    else if (cp > ranges[mid][1]) { lo = mid + 1; }
+    else { return true; }
+  }
+  return false;
+}
+
+// Mirrors markcheck.severity.
+function severity(cp, category, note) {
+  if (note) return "info";
+  if (category === "tag" || inRanges(cp, T.HIGH_BIDI)) return "high";
+  if (category === "whitespace") return "low";
+  if (category === "default-ignorable") return "low";
+  return "medium";
+}
+
+// Mirrors markcheck._note. isDigit reproduces Python str.isdigit exactly, from
+// a range table generated off CPython itself: \p{Nd} alone misses the 128
+// digits outside that category, and \p{Nd}|\p{No} over-matches (U+00BC VULGAR
+// FRACTION ONE QUARTER is No, but not a digit).
+function isDigit(ch) {
+  return ch !== "" && inRanges(ch.codePointAt(0), T.DIGITS);
+}
 
 function note(chars, i, cp) {
   if (i === 0 && cp === 0xFEFF) return "BOM at file start (conventional)";
@@ -67,7 +89,8 @@ function note(chars, i, cp) {
 // Returns { hits, total, capped }, mirroring Python's ScanResult: total is the
 // true count, hits holds at most maxHits records so a paste that is mostly
 // hidden characters cannot grow an unbounded array in the tab.
-function scan(text, categories, maxHits) {
+function scan(text, categories, maxHits, minSeverity) {
+  const threshold = T.SEVERITIES.indexOf(minSeverity || "info");
   const chars = Array.from(text);
   const hits = [];
   let total = 0, capped = false;
@@ -78,16 +101,20 @@ function scan(text, categories, maxHits) {
     const cp = ch.codePointAt(0);
     const info = classify(cp);
     if (info && categories.has(info.category)) {
-      total += 1;
-      if (maxHits && hits.length >= maxHits) {
-        capped = true;
-      } else {
-        hits.push({ index: i, line: line, column: col, char: ch,
-                    codepoint: cp,
-                    codepointHex: "U+" + cp.toString(16).toUpperCase()
-                      .padStart(4, "0"),
-                    name: info.name, category: info.category,
-                    note: note(chars, i, cp) });
+      const n = note(chars, i, cp);
+      const level = severity(cp, info.category, n);
+      if (T.SEVERITIES.indexOf(level) >= threshold) {
+        total += 1;
+        if (maxHits && hits.length >= maxHits) {
+          capped = true;
+        } else {
+          hits.push({ index: i, line: line, column: col, char: ch,
+                      codepoint: cp,
+                      codepointHex: "U+" + cp.toString(16).toUpperCase()
+                        .padStart(4, "0"),
+                      name: info.name, category: info.category,
+                      severity: level, note: n });
+        }
       }
     }
     if (ch === "\n") { line += 1; col = 0; }
@@ -95,13 +122,20 @@ function scan(text, categories, maxHits) {
   return { hits: hits, total: total, capped: capped };
 }
 
-function stripHidden(text, categories) {
+function stripHidden(text, categories, minSeverity) {
+  const threshold = T.SEVERITIES.indexOf(minSeverity || "info");
+  const chars = Array.from(text);
   let out = "";
-  for (const ch of text) {
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
     const cp = ch.codePointAt(0);
     const info = classify(cp);
-    if (!info || !categories.has(info.category)) { out += ch; }
-    else { out += (T.REPL[cp] !== undefined ? T.REPL[cp] : ""); }
+    if (!info || !categories.has(info.category)) { out += ch; continue; }
+    if (threshold) {
+      const level = severity(cp, info.category, note(chars, i, cp));
+      if (T.SEVERITIES.indexOf(level) < threshold) { out += ch; continue; }
+    }
+    out += (T.REPL[cp] !== undefined ? T.REPL[cp] : "");
   }
   return out;
 }

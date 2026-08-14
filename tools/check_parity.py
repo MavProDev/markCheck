@@ -37,6 +37,13 @@ EDGE_CASES = [
     "trailing nnbsp\u202f", "trailing nbsp\u00a0", "\u0661\u00a0\u0662",
     "\n\n\u200b", "\u200b" * 40, "plain ascii text with no hits at all",
     "a\u180fb", "\u180b\u180c\u180d\u180f",
+    # Digit-note edges: str.isdigit() is True for superscripts (No, not Nd)
+    # and False for vulgar fractions (also No), so a \p{Nd}|\p{No} test in the
+    # browser would disagree with Python in both directions.
+    "\u00b2\u00a0\u00b3", "\u00bc\u00a0\u00bd", "\u2460\u00a0\u2461",
+    "1\u00a0\u00bc", "\u06f1\u202f\u06f2", "\u1369\u00a0\u136a",
+    # Default-ignorable code points outside the curated taxonomy.
+    "a\u2065b", "\ufff0\ufff8", "\U0001bca0\U0001d173",
 ]
 
 
@@ -65,8 +72,14 @@ def python_reference(texts):
         hits = m.scan(text, cats).hits
         ref.append({
             "hits": [[h["index"], h["line"], h["column"], h["codepoint"],
-                      h["name"], h["category"], h["note"]] for h in hits],
+                      h["name"], h["category"], h["severity"], h["note"]]
+                     for h in hits],
             "stripped": m.strip_hidden(text, cats),
+            # A severity filter must select the same hits on both sides, so
+            # --suspicious-only and a conservative strip cannot drift.
+            "suspicious": [h["index"]
+                           for h in m.scan(text, cats, 0, "medium").hits],
+            "stripped_medium": m.strip_hidden(text, cats, "medium"),
         })
     return ref
 
@@ -88,7 +101,7 @@ const bad = [];
 data.corpus.forEach((text, k) => {
   const want = data.ref[k];
   const got = api.scan(text, ALL).hits.map(h => [h.index, h.line,
-    h.column, h.codepoint, h.name, h.category, h.note]);
+    h.column, h.codepoint, h.name, h.category, h.severity, h.note]);
   if (JSON.stringify(got) !== JSON.stringify(want.hits)) {
     bad.push({case: k, kind: "scan", text, want: want.hits, got});
   }
@@ -96,6 +109,16 @@ data.corpus.forEach((text, k) => {
   if (stripped !== want.stripped) {
     bad.push({case: k, kind: "strip", text,
               want: want.stripped, got: stripped});
+  }
+  const susp = api.scan(text, ALL, 0, "medium").hits.map(h => h.index);
+  if (JSON.stringify(susp) !== JSON.stringify(want.suspicious)) {
+    bad.push({case: k, kind: "severity-filter", text,
+              want: want.suspicious, got: susp});
+  }
+  const strippedMedium = api.stripHidden(text, ALL, "medium");
+  if (strippedMedium !== want.stripped_medium) {
+    bad.push({case: k, kind: "strip-medium", text,
+              want: want.stripped_medium, got: strippedMedium});
   }
 });
 console.log(JSON.stringify({checked: data.corpus.length,

@@ -38,6 +38,9 @@ jobs:
           node-version: "20"
       - name: Browser build matches the Python module
         run: python tools/check_parity.py
+
+      - name: Deployment function behaves in every storage state
+        run: node tools/check_api.js
       - name: Committed web build is current
         run: |
           python tools/build_web.py

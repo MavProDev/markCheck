@@ -11,6 +11,20 @@
 <title>markcheck - patch notes</title>
 <meta name="description" content="Release history for markcheck, the hidden
 Unicode character scanner.">
+<link rel="canonical" href="https://markcheck.org/changelog.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="markcheck">
+<meta property="og:url" content="https://markcheck.org/changelog.html">
+<meta property="og:title" content="markcheck patch notes">
+<meta property="og:description" content="Every release, what changed, and why.">
+<meta property="og:image" content="https://markcheck.org/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="markcheck: find characters hiding in your text">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="markcheck patch notes">
+<meta name="twitter:description" content="Every release, what changed, and why.">
+<meta name="twitter:image" content="https://markcheck.org/og.png">
 <style>
   /* Shared design system for the generated pages. Injected by build_web.py so
      the three pages cannot drift apart in palette, glass, or motion. Light is
@@ -224,6 +238,12 @@ Unicode character scanner.">
     <p>Every release, what changed, and why.</p>
   </header>
 
+<section class="card glass release"><h2><span class="ver">2.3.0</span></h2>
+<h3 class="tagline">Added</h3>
+<ul><li><strong>Social preview cards.</strong> A link to the site shared as a bare URL with no title, summary, or image. All three pages now carry Open Graph and Twitter metadata plus a canonical URL, and <code>web/og.png</code> is the card: the headline with a visible <code>U+200B</code> badge wedged between two words, which is exactly what the tool is about.</li><li>The card is authored in HTML and CSS (<code>tools/og.template.html</code>) and rendered to a PNG at build time by <code>tools/build_og.js</code>, using the browser this repository already drives for verification. Vercel's <code>@vercel/og</code> was the obvious alternative and was rejected deliberately: it generates images per request, which earns its keep when card content varies per URL. Three static pages whose cards never change would gain a dependency, a <code>node_modules</code>, and a cold start per crawler hit to produce the same image forever — and put a supply chain inside a tool whose about page claims it has none.</li><li>The canonical host now lives in exactly one place, <code>build_web.SITE_URL</code>. The pages remain otherwise host-agnostic and every internal link stays relative.</li></ul>
+<h3 class="tagline">Notes</h3>
+<ul><li><code>web/og.png</code> is the one generated file CI cannot rebuild, because the runners have no browser. It is therefore not diff-gated and is regenerated on demand when the card design changes. A deliberate exception to this project's generate-and-gate rule, recorded here rather than left to be discovered.</li><li>The card carries its own copy of the palette, since it renders standalone with no cascade from the site. <code>build_og.js</code> fails the build if those colours drift from <code>tools/shared.css</code>.</li><li>Verified in a real browser: adding <code>og:image</code> does not cause the page to fetch anything. Crawlers read the tag and fetch the image server-side, so the <code>connect-src 'none'</code> guarantee is untouched and the no-network assertion still passes on all three pages.</li></ul>
+</section>
 <section class="card glass release"><h2><span class="ver">2.2.1</span></h2>
 <p>No behaviour changes. Two claims this project makes about itself were resting on my word rather than on a check, so they are now checked.</p>
 <h3 class="tagline">Verification</h3>
@@ -297,7 +317,7 @@ Unicode character scanner.">
 </section>
 
   <footer>
-    markcheck 2.2.1 &middot; MIT licensed &middot;
+    markcheck 2.3.0 &middot; MIT licensed &middot;
     <a href="https://github.com/MavProDev/markcheck" rel="noopener noreferrer">source
     on GitHub</a><br>
     Generated from CHANGELOG.md at build time; never edited by hand.

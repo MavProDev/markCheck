@@ -3,14 +3,16 @@
 <head>
 <meta charset="utf-8">
 <!--
-  The social preview card, rendered to web/og.png at build time by
-  tools/build_og.js. Authored in HTML and CSS for the same reason the rest of
-  this repository is generated: the card should not drift from the site it
-  represents. The palette below is copied from tools/shared.css deliberately —
-  a card renders in a headless browser with no cascade from the site, and the
-  build asserts the two stay in step.
+  The social preview card, rendered to web/og.png by tools/build_og.js.
 
-  Exactly 1200x630, the size every scraper crops to.
+  Authored in HTML and CSS so it stays in the same visual language as the site.
+  The palette below is copied from tools/shared.css deliberately: the card
+  renders standalone in a headless browser with no cascade from the site, and
+  build_og.js fails if the two drift.
+
+  Exactly 1200x630, the size every scraper crops to. It is usually seen at
+  around a third of that in a feed, so the composition leads with one large
+  idea and keeps the supporting detail legible rather than dense.
 -->
 <style>
   :root {
@@ -33,68 +35,149 @@
     -webkit-font-smoothing: antialiased; overflow: hidden; position: relative;
   }
 
-  /* The same drifting aura as the site, frozen in place. */
-  .aura { position: absolute; inset: -200px; filter: blur(120px); opacity: .55; }
-  .aura i { position: absolute; display: block; border-radius: 50%;
-            width: 700px; height: 700px; }
-  .aura i:nth-child(1) { background: #0a2f6b; top: -180px; left: -120px; }
-  .aura i:nth-child(2) { background: #5c2a00; bottom: -260px; right: -100px; }
-  .aura i:nth-child(3) { background: #35206b; bottom: -300px; left: 380px; }
+  /* Light sources behind the glass. Large, heavily blurred, and placed so the
+     brightest area sits behind the panel edge, which is what makes a
+     translucent surface read as glass rather than as grey fill. */
+  .aura i {
+    position: absolute; display: block; border-radius: 50%; filter: blur(150px);
+  }
+  .a1 { width: 900px; height: 900px; background: #0a5cff; opacity: .55;
+        top: -300px; left: -160px; }
+  .a2 { width: 780px; height: 780px; background: #ff6a00; opacity: .40;
+        bottom: -300px; right: -120px; }
+  .a3 { width: 720px; height: 720px; background: #7b3bff; opacity: .46;
+        bottom: -260px; left: 320px; }
+  .a4 { width: 480px; height: 480px; background: #ff2d55; opacity: .26;
+        top: 90px; right: 200px; }
 
-  .frame {
-    position: relative; height: 100%; padding: 74px 80px;
-    display: flex; flex-direction: column; justify-content: space-between;
+  /* A fine grid keeps the large dark areas from looking empty and gives the
+     blur something to refract. */
+  .grid {
+    position: absolute; inset: 0; opacity: .16;
+    background-image:
+      linear-gradient(rgba(255,255,255,.6) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.6) 1px, transparent 1px);
+    background-size: 48px 48px;
+    -webkit-mask-image: radial-gradient(120% 90% at 20% 0%, #000 20%, transparent 72%);
+            mask-image: radial-gradient(120% 90% at 20% 0%, #000 20%, transparent 72%);
   }
 
+  .panel {
+    position: absolute; inset: 48px;
+    border-radius: 40px;
+    background: rgba(20, 20, 24, 0.46);
+    -webkit-backdrop-filter: blur(60px) saturate(190%);
+            backdrop-filter: blur(60px) saturate(190%);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    /* Outer depth, an inner specular top edge, and a faint inner glow: the
+       three cues that read as a lit pane of glass. */
+    box-shadow:
+      0 40px 90px rgba(0, 0, 0, 0.55),
+      inset 0 1px 0 rgba(255, 255, 255, 0.30),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.06),
+      inset 0 60px 120px rgba(255, 255, 255, 0.035);
+    padding: 56px 60px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    overflow: hidden;
+  }
+  /* A soft sheen sweeping the top-left corner of the pane. */
+  .panel::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(133deg,
+      rgba(255,255,255,.16) 0%, rgba(255,255,255,.04) 26%,
+      transparent 52%);
+  }
+
+  .top { display: flex; align-items: center; justify-content: space-between; }
   .wordmark {
-    display: flex; align-items: center; gap: 16px;
-    font-size: 30px; font-weight: 700; letter-spacing: -0.02em;
+    display: flex; align-items: center; gap: 15px;
+    font-size: 29px; font-weight: 700; letter-spacing: -0.022em;
   }
   .dot {
-    width: 20px; height: 20px; border-radius: 50%; background: var(--accent);
-    box-shadow: 0 0 0 9px rgba(10, 132, 255, 0.18);
+    width: 19px; height: 19px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 8px rgba(10,132,255,.18), 0 0 26px rgba(10,132,255,.85);
   }
+  .pill {
+    font-size: 20px; color: var(--ink); letter-spacing: -0.01em;
+    padding: 11px 20px; border-radius: 999px;
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.13);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.18);
+    display: flex; align-items: center; gap: 11px;
+  }
+  .pill b { color: #30d158; font-size: 15px; }
 
   h1 {
-    font-size: 82px; line-height: 1.04; letter-spacing: -0.04em;
-    font-weight: 700; max-width: 17ch;
+    font-size: 76px; line-height: 1.02; letter-spacing: -0.042em;
+    font-weight: 700; max-width: 15ch;
   }
-  /* The invisible character made visible: the one idea the tool is about. */
-  .reveal {
-    display: inline-block; background: var(--high); color: #fff;
-    font: 600 44px/1 var(--mono); padding: 6px 14px; border-radius: 12px;
-    transform: translateY(-8px); margin: 0 6px;
+  h1 .quiet { color: rgba(245, 245, 247, 0.62); }
+
+  /* The product in miniature: a line of text with the invisible character
+     caught in the act. This is the whole pitch in one glance. */
+  .proof {
+    display: flex; align-items: center; gap: 18px;
+    background: rgba(0,0,0,.42);
+    border: 1px solid rgba(255,255,255,.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.10);
+    border-radius: 20px; padding: 20px 24px;
+    font: 25px/1 var(--mono); letter-spacing: -0.01em;
+  }
+  .proof .txt { color: #d8d8dd; }
+  .caught {
+    display: inline-flex; align-items: center; gap: 9px;
+    background: var(--high); color: #fff;
+    font: 600 21px/1 var(--mono);
+    padding: 9px 13px; border-radius: 10px;
+    box-shadow: 0 6px 20px rgba(255,69,58,.45);
+  }
+  .caught::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%;
+    background: rgba(255,255,255,.95);
   }
 
-  .foot { display: flex; align-items: flex-end; justify-content: space-between; }
-  .tag { font-size: 27px; color: var(--dim); letter-spacing: -0.01em; }
-  .tag b { color: var(--ink); font-weight: 600; }
-
-  .sev { display: flex; gap: 10px; align-items: center; }
-  .sev span {
-    height: 12px; border-radius: 999px; display: block;
-  }
-  .sev .info { width: 46px; background: var(--info); }
-  .sev .low { width: 62px; background: var(--low); }
-  .sev .med { width: 84px; background: var(--med); }
-  .sev .high { width: 110px; background: var(--high); }
+  .bottom { display: flex; align-items: flex-end; justify-content: space-between; }
+  .sev { display: flex; gap: 9px; align-items: center; }
+  .sev span { height: 11px; border-radius: 999px; display: block; }
+  .sev .i { width: 40px; background: var(--info); }
+  .sev .l { width: 58px; background: var(--low); }
+  .sev .m { width: 80px; background: var(--med); }
+  .sev .h { width: 108px; background: var(--high);
+            box-shadow: 0 0 20px rgba(255,69,58,.55); }
+  .host { font-size: 24px; color: var(--dim); letter-spacing: -0.01em; }
+  .host b { color: var(--ink); font-weight: 600; }
 </style>
 </head>
 <body>
-<div class="aura"><i></i><i></i><i></i></div>
-<div class="frame">
-  <div class="wordmark"><span class="dot"></span>markcheck</div>
+<div class="aura" aria-hidden="true">
+  <i class="a1"></i><i class="a2"></i><i class="a3"></i><i class="a4"></i>
+</div>
+<div class="grid" aria-hidden="true"></div>
 
-  <h1>Find characters<span class="reveal">U+200B</span>hiding in your text</h1>
+<div class="panel">
+  <div class="top">
+    <div class="wordmark"><span class="dot"></span>markcheck</div>
+    <div class="pill"><b>●</b> Runs entirely in your browser</div>
+  </div>
 
-  <div class="foot">
-    <div class="tag">
-      <b>Runs entirely in your browser.</b> Nothing is uploaded.
-    </div>
+  <div>
+    <h1>Find what's hiding<br><span class="quiet">in your text.</span></h1>
+  </div>
+
+  <div class="proof">
+    <span class="txt">revenue&nbsp;rose&nbsp;12</span>
+    <span class="caught">U+202F</span>
+    <span class="txt">000</span>
+    <span class="caught">U+200B</span>
+    <span class="txt">units.</span>
+  </div>
+
+  <div class="bottom">
     <div class="sev" aria-hidden="true">
-      <span class="info"></span><span class="low"></span>
-      <span class="med"></span><span class="high"></span>
+      <span class="i"></span><span class="l"></span>
+      <span class="m"></span><span class="h"></span>
     </div>
+    <div class="host"><b>markcheck</b>.org</div>
   </div>
 </div>
 </body>

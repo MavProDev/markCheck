@@ -4,9 +4,11 @@
 ### Added
 - **Social preview cards.** A link to the site shared as a bare URL with no
   title, summary, or image. All three pages now carry Open Graph and Twitter
-  metadata plus a canonical URL, and `web/og.png` is the card: the headline
-  with a visible `U+200B` badge wedged between two words, which is exactly what
-  the tool is about.
+  metadata plus a canonical URL, and `web/og.png` is the card: a lit glass
+  panel over a coloured aura, carrying the headline and a line of ordinary
+  prose with two invisible characters caught in the act — a narrow no-break
+  space and a zero-width space, flagged mid-sentence where they actually hide.
+  Composed to survive being viewed at a third of its size in a feed.
 - The card is authored in HTML and CSS (`tools/og.template.html`) and rendered
   to a PNG at build time by `tools/build_og.js`, using the browser this
   repository already drives for verification. Vercel's `@vercel/og` was the

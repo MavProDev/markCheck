@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!--
+  The social preview card, rendered to web/og.png at build time by
+  tools/build_og.js. Authored in HTML and CSS for the same reason the rest of
+  this repository is generated: the card should not drift from the site it
+  represents. The palette below is copied from tools/shared.css deliberately —
+  a card renders in a headless browser with no cascade from the site, and the
+  build asserts the two stay in step.
+
+  Exactly 1200x630, the size every scraper crops to.
+-->
+<style>
+  :root {
+    --bg: #000000;
+    --ink: #f5f5f7;
+    --dim: #98989d;
+    --accent: #0a84ff;
+    --info: #98989d;
+    --low: #64d2ff;
+    --med: #ff9f0a;
+    --high: #ff453a;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto,
+            Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1200px; height: 630px; }
+  body {
+    background: var(--bg); color: var(--ink); font-family: var(--sans);
+    -webkit-font-smoothing: antialiased; overflow: hidden; position: relative;
+  }
+
+  /* The same drifting aura as the site, frozen in place. */
+  .aura { position: absolute; inset: -200px; filter: blur(120px); opacity: .55; }
+  .aura i { position: absolute; display: block; border-radius: 50%;
+            width: 700px; height: 700px; }
+  .aura i:nth-child(1) { background: #0a2f6b; top: -180px; left: -120px; }
+  .aura i:nth-child(2) { background: #5c2a00; bottom: -260px; right: -100px; }
+  .aura i:nth-child(3) { background: #35206b; bottom: -300px; left: 380px; }
+
+  .frame {
+    position: relative; height: 100%; padding: 74px 80px;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+
+  .wordmark {
+    display: flex; align-items: center; gap: 16px;
+    font-size: 30px; font-weight: 700; letter-spacing: -0.02em;
+  }
+  .dot {
+    width: 20px; height: 20px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 9px rgba(10, 132, 255, 0.18);
+  }
+
+  h1 {
+    font-size: 82px; line-height: 1.04; letter-spacing: -0.04em;
+    font-weight: 700; max-width: 17ch;
+  }
+  /* The invisible character made visible: the one idea the tool is about. */
+  .reveal {
+    display: inline-block; background: var(--high); color: #fff;
+    font: 600 44px/1 var(--mono); padding: 6px 14px; border-radius: 12px;
+    transform: translateY(-8px); margin: 0 6px;
+  }
+
+  .foot { display: flex; align-items: flex-end; justify-content: space-between; }
+  .tag { font-size: 27px; color: var(--dim); letter-spacing: -0.01em; }
+  .tag b { color: var(--ink); font-weight: 600; }
+
+  .sev { display: flex; gap: 10px; align-items: center; }
+  .sev span {
+    height: 12px; border-radius: 999px; display: block;
+  }
+  .sev .info { width: 46px; background: var(--info); }
+  .sev .low { width: 62px; background: var(--low); }
+  .sev .med { width: 84px; background: var(--med); }
+  .sev .high { width: 110px; background: var(--high); }
+</style>
+</head>
+<body>
+<div class="aura"><i></i><i></i><i></i></div>
+<div class="frame">
+  <div class="wordmark"><span class="dot"></span>markcheck</div>
+
+  <h1>Find characters<span class="reveal">U+200B</span>hiding in your text</h1>
+
+  <div class="foot">
+    <div class="tag">
+      <b>Runs entirely in your browser.</b> Nothing is uploaded.
+    </div>
+    <div class="sev" aria-hidden="true">
+      <span class="info"></span><span class="low"></span>
+      <span class="med"></span><span class="high"></span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

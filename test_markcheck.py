@@ -991,8 +991,17 @@ class TestChangelogRendering(unittest.TestCase):
                            "__ENGINE__", "__TABLES__"):
                 self.assertNotIn(marker, page, f"{marker} left in {name}")
 
-    # The only outbound link any generated page may carry.
+    # The only outbound link any generated page may carry. The site's own
+    # canonical URLs join it, derived from build_web.SITE_URL rather than
+    # written out again, so moving the domain cannot leave this stale.
     ALLOWED_URLS = {"https://github.com/MavProDev/markcheck"}
+
+    def _allowed_urls(self):
+        site = self.bw.SITE_URL
+        return self.ALLOWED_URLS | {
+            site, site + "/", site + "/og.png",
+            site + "/about.html", site + "/changelog.html",
+        }
 
     def test_generated_pages_carry_no_address_or_stray_url(self):
         # Substring matching is too blunt here: CSS is full of @media, and
@@ -1007,7 +1016,7 @@ class TestChangelogRendering(unittest.TestCase):
                 re.search(r"[\w.+-]+@[\w-]+\.[a-z]{2,}", page),
                 f"an email address reached {name}")
             urls = set(re.findall(r"https?://[^\s\"'<>)]+", page))
-            self.assertEqual(urls - self.ALLOWED_URLS, set(),
+            self.assertEqual(urls - self._allowed_urls(), set(),
                              f"unexpected outbound URL in {name}")
             for needle in ("session_", "Co-Authored", "Claude-Session"):
                 self.assertNotIn(needle, page, f"{needle!r} reached {name}")

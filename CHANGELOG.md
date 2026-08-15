@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.3.0
+### Added
+- **Social preview cards.** A link to the site shared as a bare URL with no
+  title, summary, or image. All three pages now carry Open Graph and Twitter
+  metadata plus a canonical URL, and `web/og.png` is the card: a lit glass
+  panel over a coloured aura, carrying the headline and a line of ordinary
+  prose with two invisible characters caught in the act — a narrow no-break
+  space and a zero-width space, flagged mid-sentence where they actually hide.
+  Composed to survive being viewed at a third of its size in a feed.
+- The card is authored in HTML and CSS (`tools/og.template.html`) and rendered
+  to a PNG at build time by `tools/build_og.js`, using the browser this
+  repository already drives for verification. Vercel's `@vercel/og` was the
+  obvious alternative and was rejected deliberately: it generates images per
+  request, which earns its keep when card content varies per URL. Three static
+  pages whose cards never change would gain a dependency, a `node_modules`, and
+  a cold start per crawler hit to produce the same image forever — and put a
+  supply chain inside a tool whose about page claims it has none.
+- The canonical host now lives in exactly one place, `build_web.SITE_URL`. The
+  pages remain otherwise host-agnostic and every internal link stays relative.
+
+### Notes
+- `web/og.png` is the one generated file CI cannot rebuild, because the runners
+  have no browser. It is therefore not diff-gated and is regenerated on demand
+  when the card design changes. A deliberate exception to this project's
+  generate-and-gate rule, recorded here rather than left to be discovered.
+- The card carries its own copy of the palette, since it renders standalone
+  with no cascade from the site. `build_og.js` fails the build if those colours
+  drift from `tools/shared.css`.
+- Verified in a real browser: adding `og:image` does not cause the page to
+  fetch anything. Crawlers read the tag and fetch the image server-side, so the
+  `connect-src 'none'` guarantee is untouched and the no-network assertion
+  still passes on all three pages.
+
 ## 2.2.1
 No behaviour changes. Two claims this project makes about itself were resting
 on my word rather than on a check, so they are now checked.

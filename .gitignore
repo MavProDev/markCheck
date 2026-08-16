@@ -10,3 +10,10 @@ venv/
 *.clean.*
 *.bak
 
+# Credentials for the hosted copy live in the deployment environment and must
+# never reach a commit. Nothing here reads a .env file; these patterns exist so
+# that a local one cannot be staged by accident.
+.env
+.env.*
+!.env.example
+

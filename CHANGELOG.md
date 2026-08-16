@@ -28,6 +28,22 @@
   Nothing else in the suite could catch that regression, because the function
   is built never to report one.
 
+### Security
+- The hosted copy now sends `Strict-Transport-Security`, joining the existing
+  `Content-Security-Policy`, `X-Content-Type-Options`, `Referrer-Policy`,
+  `Permissions-Policy`, and the cross-origin isolation headers. A first visit
+  over plain HTTP could previously have been intercepted before the redirect.
+- `.gitignore` now covers `.env` files. Nothing in this project reads one; the
+  patterns exist so that a local file holding deployment credentials cannot be
+  staged by accident.
+- Audited alongside this release, with results recorded rather than assumed:
+  the escaping in front of every `innerHTML` in the scanner was tested against
+  eight classes of injection payload — including attribute breaks on both quote
+  styles and a payload wrapped in a bidirectional control — with none executing,
+  none producing a DOM node, and no network request attempted under attack.
+  This matters because the page's policy permits inline handlers, so an
+  escaping miss would be script execution rather than a cosmetic bug.
+
 ## 2.3.0
 ### Added
 - **Social preview cards.** A link to the site shared as a bare URL with no

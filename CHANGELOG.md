@@ -1,5 +1,49 @@
 # Changelog
 
+## 2.3.1
+### Changed
+- **The visitor counter is live.** The code shipped in 2.2.1; what was missing
+  was the storage behind it, which is now provisioned. The count is still
+  resolved on the server and substituted into the document before it is sent,
+  so the page continues to make zero network requests and `connect-src 'none'`
+  is untouched.
+- The counter's credential is now a **publishable** key, and the environment
+  variable is named `SUPABASE_KEY` rather than `SUPABASE_SERVICE_KEY` to say
+  so honestly. The increment runs through a `SECURITY DEFINER` function, so the
+  key needs no privilege beyond `EXECUTE` on that one function — it cannot read
+  the table it increments. A service key would have granted the deployment full
+  access to the database in order to add one to a number.
+- The key is sent on the `apikey` header alone. Publishable keys are not JWTs,
+  so repeating one in `Authorization: Bearer` makes the gateway reject the call
+  as a malformed token. That failure would have been invisible: the function
+  swallows storage errors by design and serves the page with the counter
+  hidden, which is indistinguishable from not being configured at all.
+- Stored data is unchanged and remains a single integer in a single row. The
+  table has row level security enabled with no policies **and** the default API
+  grants revoked, so it is unreachable through the API by either route.
+
+### Added
+- `tools/check_api.js` now pins the request shape sent to storage — endpoint,
+  method, and the presence of `apikey` with the absence of `Authorization`.
+  Nothing else in the suite could catch that regression, because the function
+  is built never to report one.
+
+### Security
+- The hosted copy now sends `Strict-Transport-Security`, joining the existing
+  `Content-Security-Policy`, `X-Content-Type-Options`, `Referrer-Policy`,
+  `Permissions-Policy`, and the cross-origin isolation headers. A first visit
+  over plain HTTP could previously have been intercepted before the redirect.
+- `.gitignore` now covers `.env` files. Nothing in this project reads one; the
+  patterns exist so that a local file holding deployment credentials cannot be
+  staged by accident.
+- Audited alongside this release, with results recorded rather than assumed:
+  the escaping in front of every `innerHTML` in the scanner was tested against
+  eight classes of injection payload — including attribute breaks on both quote
+  styles and a payload wrapped in a bidirectional control — with none executing,
+  none producing a DOM node, and no network request attempted under attack.
+  This matters because the page's policy permits inline handlers, so an
+  escaping miss would be script execution rather than a cosmetic bug.
+
 ## 2.3.0
 ### Added
 - **Social preview cards.** A link to the site shared as a bare URL with no

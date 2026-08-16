@@ -9,6 +9,11 @@
 // What is stored: one integer. No IP address, no user agent, no per-visitor row,
 // no timestamp. There is nothing here to correlate a visit back to a person.
 //
+// The credential below is a publishable key whose only privilege is EXECUTE on
+// increment_visits(). It cannot read the table it increments, so even a full
+// disclosure of this environment would reveal nothing but the ability to add
+// one to a number.
+//
 // Everything is best effort. A missing environment variable, an unreachable
 // database, or a slow response must never cost the visitor the page, so every
 // failure path still returns the document with the counter simply absent.
@@ -44,7 +49,7 @@ function loadPage() {
 
 async function bumpVisits() {
   const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
+  const key = process.env.SUPABASE_KEY;
   if (!url || !key) {
     return null; // not configured yet: render without a counter
   }
@@ -53,9 +58,12 @@ async function bumpVisits() {
   try {
     const res = await fetch(url.replace(/\/$/, "") + "/rest/v1/rpc/increment_visits", {
       method: "POST",
+      // The key travels on `apikey` and nowhere else. Modern publishable keys
+      // are not JWTs, so repeating one in `Authorization: Bearer` makes the
+      // gateway try to parse it as a token and reject the call. Sending only
+      // `apikey` is the one shape that works for every key format.
       headers: {
         apikey: key,
-        Authorization: "Bearer " + key,
         "Content-Type": "application/json",
       },
       body: "{}",

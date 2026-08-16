@@ -318,24 +318,44 @@ exactly as normal with the counter simply absent; the counter can never take the
 site down. Opening `web/index.html` from disk behaves the same way, which is why
 the offline promise still holds.
 
-Configure it with two environment variables, `SUPABASE_URL` and
-`SUPABASE_SERVICE_KEY`, and this in the database:
+Configure it with two environment variables, `SUPABASE_URL` and `SUPABASE_KEY`,
+and this in the database:
 
 ```sql
-create table if not exists site_stats (
+create table if not exists public.site_stats (
   key text primary key,
   count bigint not null default 0
 );
-insert into site_stats (key, count) values ('visits', 0)
+insert into public.site_stats (key, count) values ('visits', 0)
   on conflict (key) do nothing;
-alter table site_stats enable row level security;   -- no public access
 
-create or replace function increment_visits() returns bigint
-  language sql security definer as $$
-    update site_stats set count = count + 1 where key = 'visits'
+-- RLS on with no policies, and the default API grants removed: the table is
+-- unreachable through the API by either route.
+alter table public.site_stats enable row level security;
+revoke all on table public.site_stats from anon, authenticated;
+
+-- SECURITY DEFINER so it can bump the row while the table stays closed. The
+-- fixed search_path keeps definer rights from being redirected by the caller.
+create or replace function public.increment_visits() returns bigint
+  language sql
+  security definer
+  set search_path = public
+  as $$
+    update public.site_stats set count = count + 1 where key = 'visits'
     returning count;
   $$;
+
+-- CREATE FUNCTION grants EXECUTE to PUBLIC by default. Narrow it to the one
+-- role the deployed function actually uses.
+revoke execute on function public.increment_visits() from public, authenticated;
+grant execute on function public.increment_visits() to anon;
 ```
+
+`SUPABASE_KEY` is a **publishable** key, not a secret one. After the grants
+above its entire authority is "add one to a number" — it cannot read the table
+it increments, so the deployment holds no credential worth protecting. Send it
+on the `apikey` header only; publishable keys are not JWTs, and repeating one in
+`Authorization: Bearer` makes the gateway reject the call.
 
 ```bash
 python3 tools/build_web.py     # regenerate web/index.html

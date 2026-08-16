@@ -40,13 +40,13 @@ async function run(env) {
   delete require.cache[require.resolve(HANDLER)];
   const saved = {
     url: process.env.SUPABASE_URL,
-    key: process.env.SUPABASE_SERVICE_KEY,
+    key: process.env.SUPABASE_KEY,
     fetch: global.fetch,
   };
   if (env.url === undefined) { delete process.env.SUPABASE_URL; }
   else { process.env.SUPABASE_URL = env.url; }
-  if (env.key === undefined) { delete process.env.SUPABASE_SERVICE_KEY; }
-  else { process.env.SUPABASE_SERVICE_KEY = env.key; }
+  if (env.key === undefined) { delete process.env.SUPABASE_KEY; }
+  else { process.env.SUPABASE_KEY = env.key; }
   if (env.fetch) { global.fetch = env.fetch; }
 
   try {
@@ -57,8 +57,8 @@ async function run(env) {
   } finally {
     if (saved.url === undefined) { delete process.env.SUPABASE_URL; }
     else { process.env.SUPABASE_URL = saved.url; }
-    if (saved.key === undefined) { delete process.env.SUPABASE_SERVICE_KEY; }
-    else { process.env.SUPABASE_SERVICE_KEY = saved.key; }
+    if (saved.key === undefined) { delete process.env.SUPABASE_KEY; }
+    else { process.env.SUPABASE_KEY = saved.key; }
     global.fetch = saved.fetch;
   }
 }
@@ -125,6 +125,31 @@ async function run(env) {
       assert.ok(!/class="visits"/.test(res.body), "counter rendered anyway");
     });
   }
+
+  // The request shape storage actually requires. A publishable key is not a
+  // JWT, so repeating it in Authorization makes the gateway reject the call --
+  // and the rejection is invisible, because the function is built to swallow
+  // failures and serve the page anyway. Nothing else would catch this.
+  let sent = null;
+  await run({
+    url: "https://example.supabase.co/",
+    key: "sb_publishable_example",
+    fetch: async (target, init) => {
+      sent = { target, init };
+      return { ok: true, json: async () => 7 };
+    },
+  });
+  check("storage is called with the documented header shape", () => {
+    assert.ok(sent, "storage was never called");
+    assert.strictEqual(
+      sent.target, "https://example.supabase.co/rest/v1/rpc/increment_visits",
+      "wrong endpoint, or a trailing slash was not trimmed");
+    assert.strictEqual(sent.init.method, "POST");
+    const names = Object.keys(sent.init.headers).map((h) => h.toLowerCase());
+    assert.ok(names.includes("apikey"), "key must be sent on the apikey header");
+    assert.ok(!names.includes("authorization"),
+              "a publishable key in Authorization is rejected as a bad JWT");
+  });
 
   // The counter must never leak anything about the visitor.
   check("no request metadata is sent to storage", () => {

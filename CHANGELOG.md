@@ -1,5 +1,33 @@
 # Changelog
 
+## 2.3.1
+### Changed
+- **The visitor counter is live.** The code shipped in 2.2.1; what was missing
+  was the storage behind it, which is now provisioned. The count is still
+  resolved on the server and substituted into the document before it is sent,
+  so the page continues to make zero network requests and `connect-src 'none'`
+  is untouched.
+- The counter's credential is now a **publishable** key, and the environment
+  variable is named `SUPABASE_KEY` rather than `SUPABASE_SERVICE_KEY` to say
+  so honestly. The increment runs through a `SECURITY DEFINER` function, so the
+  key needs no privilege beyond `EXECUTE` on that one function — it cannot read
+  the table it increments. A service key would have granted the deployment full
+  access to the database in order to add one to a number.
+- The key is sent on the `apikey` header alone. Publishable keys are not JWTs,
+  so repeating one in `Authorization: Bearer` makes the gateway reject the call
+  as a malformed token. That failure would have been invisible: the function
+  swallows storage errors by design and serves the page with the counter
+  hidden, which is indistinguishable from not being configured at all.
+- Stored data is unchanged and remains a single integer in a single row. The
+  table has row level security enabled with no policies **and** the default API
+  grants revoked, so it is unreachable through the API by either route.
+
+### Added
+- `tools/check_api.js` now pins the request shape sent to storage — endpoint,
+  method, and the presence of `apikey` with the absence of `Authorization`.
+  Nothing else in the suite could catch that regression, because the function
+  is built never to report one.
+
 ## 2.3.0
 ### Added
 - **Social preview cards.** A link to the site shared as a bare URL with no

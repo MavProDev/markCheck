@@ -181,6 +181,10 @@ __SHARED_CSS__
       number</strong> — no IP address, no browser details, no per-visitor
       record, no timestamp. There is nothing kept that could connect a visit to
       a person, or to anything you scanned.</p>
+    <p>That is enforced rather than promised. The counter is a single row the
+      server may only add one to; the credential it holds cannot read that row
+      back, and cannot reach anything else at all. Storing a visitor detail
+      would take a schema change, not a change of mind.</p>
     <div class="callout">Prefer to take none of this on faith? Open your
       browser's network tab and use the scanner. You will see no requests. Or
       download <code>index.html</code> and open it with your wifi off.</div>

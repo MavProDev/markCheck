@@ -354,6 +354,10 @@ cannot do, how it handles your text, and how to use it.">
       number</strong> — no IP address, no browser details, no per-visitor
       record, no timestamp. There is nothing kept that could connect a visit to
       a person, or to anything you scanned.</p>
+    <p>That is enforced rather than promised. The counter is a single row the
+      server may only add one to; the credential it holds cannot read that row
+      back, and cannot reach anything else at all. Storing a visitor detail
+      would take a schema change, not a change of mind.</p>
     <div class="callout">Prefer to take none of this on faith? Open your
       browser's network tab and use the scanner. You will see no requests. Or
       download <code>index.html</code> and open it with your wifi off.</div>
@@ -516,7 +520,7 @@ cat file.txt | markcheck --strip --stdout &gt; clean.txt</code></pre>
   </section>
 
   <footer>
-    markcheck 2.3.0 &middot; MIT licensed &middot;
+    markcheck 2.3.1 &middot; MIT licensed &middot;
     <a href="https://github.com/MavProDev/markcheck" rel="noopener noreferrer">source
     on GitHub</a><br>
     <a href="index.html">Scanner</a> &middot;

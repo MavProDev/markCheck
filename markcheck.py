@@ -28,7 +28,7 @@ import tempfile
 import unicodedata
 from collections import Counter, namedtuple
 
-__version__ = "2.3.1"
+__version__ = "2.4.0"
 
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024  # 100 MB
 DEFAULT_MAX_HITS = 200_000
@@ -635,12 +635,19 @@ def report_text(label, text, result, show, file=None):
 
 
 def _clean_path(path):
+    """FILE.EXT -> FILE.clean.EXT, for names that actually have an extension.
+
+    A dot alone does not make an extension. A leading dot is part of the name
+    (".env" is not "" plus "env"), and a trailing dot leaves nothing after it
+    ("notes." would yield "notes.clean.", which Windows cannot even represent).
+    Both fall back to appending the suffix.
+    """
     head, tail = os.path.split(path)
-    if "." in tail:
-        stem, ext = tail.rsplit(".", 1)
+    stem, _, ext = tail.rpartition(".")
+    if stem and ext:
         tail = f"{stem}.clean.{ext}"
     else:
-        tail = tail + ".clean"
+        tail = tail.rstrip(".") + ".clean"
     return os.path.join(head, tail)
 
 

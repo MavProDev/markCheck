@@ -88,14 +88,32 @@ async function run(env) {
     fetch: async () => ({ ok: true, json: async () => 1234 }),
   });
   check("configured: count injected into the document", () => {
-    assert.ok(/class="visits"/.test(ok.body), "counter markup missing");
-    assert.ok(ok.body.includes("1,234 visits"), "count not formatted/injected");
+    assert.ok(/class="visits glass"/.test(ok.body), "counter markup missing");
+    assert.ok(ok.body.includes('aria-label="1,234 visits.'),
+              "count not formatted into the accessible name");
     assert.ok(!ok.body.includes(PLACEHOLDER), "placeholder left in the page");
+  });
+  check("configured: one odometer cell per digit", () => {
+    const digits = (ok.body.match(/<span class="d">\d<\/span>/g) || []).length;
+    const seps = (ok.body.match(/<span class="sep">,<\/span>/g) || []).length;
+    assert.strictEqual(digits, 4, `expected 4 digit cells, got ${digits}`);
+    assert.strictEqual(seps, 1, `expected 1 separator, got ${seps}`);
+  });
+  // The dial is driven entirely by --rev. If that were ever absent or out of
+  // range the gauge would read a flat zero forever while the digits looked
+  // right -- a failure nobody would think to check for.
+  check("configured: gauge is driven to a sane position", () => {
+    const found = ok.body.match(/--rev:([0-9.]+)/);
+    assert.ok(found, "--rev not set on the counter");
+    const rev = Number(found[1]);
+    assert.ok(rev > 0 && rev < 1, `--rev out of range: ${rev}`);
+    // log10(1235)/6 = 0.5163...
+    assert.ok(Math.abs(rev - Math.log10(1235) / 6) < 1e-3,
+              `--rev does not track log10(count): ${rev}`);
   });
   check("configured: response is not cached", () => {
     assert.match(ok.headers["cache-control"], /no-store/);
   });
-  check("configured: singular reads correctly", async () => {});
 
   const one = await run({
     url: "https://example.supabase.co",
@@ -103,7 +121,20 @@ async function run(env) {
     fetch: async () => ({ ok: true, json: async () => 1 }),
   });
   check("configured: '1 visit', not '1 visits'", () => {
-    assert.ok(one.body.includes("1 visit<"), "singular not handled");
+    assert.ok(one.body.includes('aria-label="1 visit.'), "singular not handled");
+    assert.ok(one.body.includes('class="cap">visit<'), "cap not singular");
+  });
+  check("configured: a single visit still moves the needle off the stop", () => {
+    const rev = Number(one.body.match(/--rev:([0-9.]+)/)[1]);
+    assert.ok(rev > 0, "one visit renders a dead gauge");
+  });
+
+  // A dollar sign in the replacement would be read as a pattern by
+  // String.replace and splice the document into itself.
+  check("substitution is literal, not pattern-expanded", () => {
+    assert.ok(!ok.body.includes("<!--VISITOR_COUNT"), "placeholder residue");
+    assert.strictEqual((ok.body.match(/<!DOCTYPE/gi) || []).length, 1,
+                       "document appears spliced into itself");
   });
 
   // Storage broken: every failure path must still return the document.

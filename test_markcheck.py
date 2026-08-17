@@ -1130,6 +1130,24 @@ class TestDeploymentRoutes(unittest.TestCase):
     def _routes(self):
         return self.cfg["routes"]
 
+    # Vercel validates vercel.json against a strict schema and rejects any
+    # property it does not know, failing the whole build. This is not a
+    # hypothetical: 2.4.2 shipped a "//" key as a comment -- JSON has no
+    # comments -- and every deployment, preview and production, failed on it.
+    # The file is small and hand-edited, so the allowlist is worth its keep.
+    ROUTE_KEYS = {"src", "dest", "headers", "methods", "continue", "status",
+                  "handle", "has", "missing", "locale", "middleware",
+                  "important", "check", "override", "caseSensitive"}
+
+    def test_no_route_carries_a_property_vercel_will_reject(self):
+        for route in self._routes():
+            unknown = set(route) - self.ROUTE_KEYS
+            self.assertEqual(
+                unknown, set(),
+                f"vercel.json route {route.get('src') or route.get('handle')} "
+                f"has {unknown}, which fails the build. JSON has no comments; "
+                f"put the explanation in the README or the function instead.")
+
     def test_root_is_served_by_the_function(self):
         self.assertTrue(
             any(r.get("src") == "/" and r.get("dest") == "/api/index"

@@ -17,6 +17,14 @@
 // Everything is best effort. A missing environment variable, an unreachable
 // database, or a slow response must never cost the visitor the page, so every
 // failure path still returns the document with the counter simply absent.
+//
+// Routing note, since vercel.json cannot hold a comment: the about and
+// changelog pages link here as a relative "index.html", which is what keeps
+// them navigable when the site is opened from disk. On the deployed site that
+// path is a static file and skips this function, so the placeholder would
+// arrive as an inert comment and the counter would silently vanish. vercel.json
+// redirects /index.html to / permanently to close that, which is also why the
+// failure path below must not redirect there.
 
 const fs = require("fs");
 const path = require("path");

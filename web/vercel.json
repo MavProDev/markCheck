@@ -20,12 +20,7 @@
       "continue": true
     },
     { "src": "/", "dest": "/api/index" },
-    {
-      "//": "The about and changelog pages link to the scanner as a relative index.html, so they still navigate when opened from disk. On the site that path was served straight off the filesystem, skipping the function and leaving the visit-count placeholder as an inert comment: a visitor who went scanner -> about -> scanner lost the counter. Canonicalising to / fixes that and matches the og:url and canonical tags, which already name / and never /index.html.",
-      "src": "/index.html",
-      "status": 308,
-      "headers": { "Location": "/" }
-    },
+    { "src": "/index.html", "status": 308, "headers": { "Location": "/" } },
     { "handle": "filesystem" }
   ]
 }

@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.4.3
+### Fixed
+- **2.4.2 could not deploy.** Its `vercel.json` carried a `"//"` key holding an
+  explanation of the redirect rule. JSON has no comments, and Vercel validates
+  the file against a strict schema that rejects any property it does not
+  recognise, so every deployment failed — preview and production alike. The
+  live site was never broken; it kept serving the previous build, which meant
+  the failure was invisible from the outside and the 2.4.2 fix never reached
+  anyone.
+- The rationale now lives in `web/api/index.js`, next to the failure path that
+  depends on it, where a comment is actually legal.
+
+### Added
+- `TestDeploymentRoutes` now checks every route object against the set of
+  properties Vercel accepts. The rest of the suite proved the routing was
+  *correct* while the file it lived in would not parse — a deploy-time failure
+  that no amount of behavioural testing could have caught.
+
 ## 2.4.2
 ### Fixed
 - **The visit counter vanished after navigating scanner to about and back.**

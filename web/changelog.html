@@ -243,6 +243,12 @@ Unicode character scanner.">
     <p>Every release, what changed, and why.</p>
   </header>
 
+<section class="card glass release"><h2><span class="ver">2.4.3</span></h2>
+<h3 class="tagline">Fixed</h3>
+<ul><li><strong>2.4.2 could not deploy.</strong> Its <code>vercel.json</code> carried a <code>&quot;//&quot;</code> key holding an explanation of the redirect rule. JSON has no comments, and Vercel validates the file against a strict schema that rejects any property it does not recognise, so every deployment failed — preview and production alike. The live site was never broken; it kept serving the previous build, which meant the failure was invisible from the outside and the 2.4.2 fix never reached anyone.</li><li>The rationale now lives in <code>web/api/index.js</code>, next to the failure path that depends on it, where a comment is actually legal.</li></ul>
+<h3 class="tagline">Added</h3>
+<ul><li><code>TestDeploymentRoutes</code> now checks every route object against the set of properties Vercel accepts. The rest of the suite proved the routing was <em>correct</em> while the file it lived in would not parse — a deploy-time failure that no amount of behavioural testing could have caught.</li></ul>
+</section>
 <section class="card glass release"><h2><span class="ver">2.4.2</span></h2>
 <h3 class="tagline">Fixed</h3>
 <ul><li><strong>The visit counter vanished after navigating scanner to about and back.</strong> The about and changelog pages link to the scanner as a relative <code>index.html</code>, which is what keeps them navigable when the pages are opened from disk. On the deployed site that path was served straight off the filesystem, skipping the function that substitutes the count — so the placeholder arrived in the browser as an inert HTML comment and the counter simply was not there. <code>/index.html</code> now permanently redirects to <code>/</code>, which also matches the <code>og:url</code> and canonical tags, since those have always named <code>/</code> and never <code>/index.html</code>.</li><li>That redirect created a loop the fix had to close as well: the function's own failure path redirected to <code>/index.html</code>, which now comes back to <code>/</code> and lands in the function again. A missing bundle is a broken deploy rather than a runtime failure worth papering over, so it now answers directly with a small self-contained page pointing at the command line tool.</li></ul>
@@ -350,7 +356,7 @@ Unicode character scanner.">
 </section>
 
   <footer>
-    markcheck 2.4.2 &middot; MIT licensed &middot;
+    markcheck 2.4.3 &middot; MIT licensed &middot;
     <a href="https://github.com/MavProDev/markcheck" rel="noopener noreferrer">source
     on GitHub</a><br>
     Generated from CHANGELOG.md at build time; never edited by hand.

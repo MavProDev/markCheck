@@ -36,12 +36,15 @@ __SOCIAL__
     --faint: rgba(0, 0, 0, 0.045);
     --accent: #0071e3;
     --accent-ink: #ffffff;
-    /* Instrument aqua, for the visit counter's dial. Mirrors shared.css;
-       test_markcheck.TestPaletteParity fails if the two ever disagree. */
-    --aqua: #00919f;
-    --aqua-hot: #00b3c4;
-    --aqua-ink: #007784;
-    --aqua-glow: rgba(0, 145, 159, 0.28);
+    /* The visit counter's dial. A physical instrument does not repaint
+       itself when the room lights change, so these are theme-invariant and
+       defined only here. --dial-cap is the exception: it is printed on the
+       page rather than on the dial, so it follows the theme. */
+    --dial-face: #f1e6cd;
+    --dial-face-edge: #d8c6a4;
+    --dial-ink: #2b2620;
+    --dial-needle: #c0392b;
+    --dial-cap: #8a7350;
     --ok: #1d8a4e;
     --info: #6e6e73;
     --low: #0a7ea4;
@@ -73,8 +76,7 @@ __SOCIAL__
       --dim: #98989d;
       --faint: rgba(255, 255, 255, 0.06);
       --accent: #0a84ff;
-      --aqua: #00e5ff; --aqua-hot: #a8fbff; --aqua-ink: #5ce1ff;
-      --aqua-glow: rgba(0, 229, 255, 0.55);
+      --dial-cap: #c4a97c;
       --ok: #30d158;
       --info: #98989d;
       --low: #64d2ff;
@@ -98,8 +100,7 @@ __SOCIAL__
     --dim: #98989d;
     --faint: rgba(255, 255, 255, 0.06);
     --accent: #0a84ff;
-    --aqua: #00e5ff; --aqua-hot: #a8fbff; --aqua-ink: #5ce1ff;
-    --aqua-glow: rgba(0, 229, 255, 0.55);
+    --dial-cap: #c4a97c;
     --ok: #30d158;
     --info: #98989d;
     --low: #64d2ff;
@@ -351,11 +352,22 @@ __SOCIAL__
   footer a { color: var(--accent); }
   /* The visit counter, built as an instrument rather than a label.
 
-     The dial is a tachometer that measures ORDER OF MAGNITUDE, not raw count:
-     the needle tracks log10(visits), one major tick per decade. A linear gauge
-     would sit pinned at zero for the site's first few thousand visitors and
-     then pinned at full forever after — this one is legible at six visits and
-     still legible at a million, and never needs rescaling.
+     Styled after a 1950s automotive tachometer — a Smiths or Jaeger dial: a
+     vanilla face with a printed scale, a chrome bezel, a red needle, and a
+     domed crystal over the whole thing. The digits sit under their own glass
+     domes, the way an odometer reads through a curved window.
+
+     The dial colours are deliberately NOT themed. A physical instrument does
+     not repaint itself when the room lights change; the cream face reads as an
+     object set into the page rather than part of its chrome. Only the caption
+     follows the theme, because it is printed on the page and not on the dial.
+
+     The needle tracks ORDER OF MAGNITUDE, not raw count: log10(visits), one
+     major tick per decade. A linear gauge would sit pinned at zero for the
+     site's first few thousand visitors and then pinned at full forever after —
+     this one is legible at six visits and still legible at a million, and
+     never needs rescaling. The last decade is printed as a redline, so passing
+     a million puts the needle into it.
 
      The geometry is chosen so the arithmetic comes out whole: a 240deg sweep
      over 6 decades is exactly 40deg per decade, and 40 divides 360 exactly, so
@@ -371,64 +383,99 @@ __SOCIAL__
   .visits {
     --arc-start: 240deg;
     --arc-sweep: 240deg;
-    display: flex; align-items: center; justify-content: center; gap: 18px;
-    width: 100%; max-width: 380px; margin: 20px auto 4px;
-    padding: 15px 22px; border-radius: 20px;
-    position: relative; overflow: hidden;
-    animation: rev-up 1.5s var(--ease) both;
-  }
-  /* A specular sweep across the top-left, the same cue the cards use. */
-  .visits::after {
-    content: ""; position: absolute; inset: 0; pointer-events: none;
-    background: linear-gradient(133deg,
-      color-mix(in srgb, var(--edge-lit) 45%, transparent) 0%,
-      transparent 46%);
+    display: flex; align-items: center; justify-content: center; gap: 20px;
+    width: 100%; max-width: 400px; margin: 20px auto 4px;
+    padding: 16px 22px; border-radius: 20px;
+    position: relative;
+    animation: rev-up 1.6s var(--ease) both;
   }
   @keyframes rev-up { from { --rev: 0; } }
 
-  .tach { position: relative; flex: none; width: 62px; height: 62px; }
+  .tach {
+    position: relative; flex: none; width: 78px; height: 78px;
+    border-radius: 50%;
+    /* Polished bezel. A conic sweep of greys is what sells metal: highlights
+       and shadows at irregular intervals, the way a turned ring catches a
+       room. */
+    background: conic-gradient(from 216deg,
+      #6f6b66, #e9e6e0 9%, #a9a49d 20%, #55514c 31%, #dedad3 44%,
+      #8e8983 57%, #f2efe9 70%, #676360 83%, #b5b0a8 92%, #6f6b66);
+    box-shadow: 0 1px 2px rgba(0,0,0,.5), 0 6px 14px rgba(0,0,0,.34);
+  }
   .tach i { position: absolute; inset: 0; display: block; border-radius: 50%; }
 
-  /* The lit arc, as a band rather than a wedge. Everything past the needle
-     stays unlit, so the gauge reads as a fill as well as a pointer. The band
-     stops short of the rim to leave the tick bezel its own clear ring; the two
-     masks must not overlap or the arc simply paints over the ticks. */
-  .tach .sweep {
-    background: conic-gradient(from var(--arc-start),
-      var(--aqua) 0deg,
-      var(--aqua-hot) calc(var(--rev) * var(--arc-sweep)),
-      color-mix(in srgb, var(--dim) 22%, transparent)
-        calc(var(--rev) * var(--arc-sweep)),
-      color-mix(in srgb, var(--dim) 22%, transparent) var(--arc-sweep),
-      transparent var(--arc-sweep));
-    -webkit-mask: radial-gradient(closest-side, transparent 56%, #000 58%,
-                                  #000 82%, transparent 84%);
-            mask: radial-gradient(closest-side, transparent 56%, #000 58%,
-                                  #000 82%, transparent 84%);
-    filter: drop-shadow(0 0 5px var(--aqua-glow));
+  /* The dial face, sunk inside the bezel. */
+  .tach .face {
+    inset: 5px;
+    background:
+      radial-gradient(circle at 34% 26%, #fffdf7 0%, var(--dial-face) 46%,
+                      var(--dial-face-edge) 100%);
+    box-shadow: inset 0 2px 4px rgba(60, 46, 24, 0.34);
   }
-  /* Nine ticks at 40deg: seven across the arc, one per decade, and two in the
-     bottom gap that read as the rest of the bezel. */
+  /* Nine major marks at 40deg: seven across the scale, one per decade, and two
+     in the gap at the bottom that read as the rest of the dial. */
   .tach .ticks {
+    inset: 5px;
     background: repeating-conic-gradient(from var(--arc-start),
-      var(--dim) 0deg 1.8deg, transparent 1.8deg 40deg);
-    -webkit-mask: radial-gradient(closest-side, transparent 88%, #000 90%);
-            mask: radial-gradient(closest-side, transparent 88%, #000 90%);
-    opacity: .5;
+      var(--dial-ink) 0deg 2.2deg, transparent 2.2deg 40deg);
+    -webkit-mask: radial-gradient(closest-side, transparent 66%, #000 68%);
+            mask: radial-gradient(closest-side, transparent 66%, #000 68%);
+    opacity: .85;
   }
+  /* Minor marks at 8deg — five to a decade, the subdivision a real dial has.
+     8 divides 360, so these also close cleanly with no stray partial mark. */
+  .tach .minor {
+    inset: 5px;
+    background: repeating-conic-gradient(from var(--arc-start),
+      var(--dial-ink) 0deg 1deg, transparent 1deg 8deg);
+    -webkit-mask: radial-gradient(closest-side, transparent 82%, #000 84%);
+            mask: radial-gradient(closest-side, transparent 82%, #000 84%);
+    opacity: .42;
+  }
+  /* The redline: the final decade of the scale, printed against the rim, so a
+     millionth visit puts the needle into it. */
+  .tach .redline {
+    inset: 5px;
+    background: conic-gradient(from var(--arc-start),
+      transparent 0deg 200deg, var(--dial-needle) 200deg 240deg,
+      transparent 240deg);
+    -webkit-mask: radial-gradient(closest-side, transparent 87%, #000 89%);
+            mask: radial-gradient(closest-side, transparent 87%, #000 89%);
+  }
+  /* A tapered pointer: wide at the hub, fine at the tip. A parallel-sided bar
+     reads as a clock hand, which is the wrong instrument entirely. */
   .tach .needle::before {
     content: ""; position: absolute; left: 50%; bottom: 50%;
-    width: 2px; height: 36%; margin-left: -1px; border-radius: 2px;
-    background: linear-gradient(to top,
-      color-mix(in srgb, var(--aqua-hot) 25%, transparent), var(--aqua-hot));
-    box-shadow: 0 0 7px var(--aqua-glow);
+    width: 6px; height: 35%; margin-left: -3px;
+    background: linear-gradient(to top, #8d2a21, var(--dial-needle) 55%);
+    clip-path: polygon(24% 100%, 76% 100%, 58% 0%, 42% 0%);
     transform-origin: 50% 100%;
+    transform: rotate(calc(var(--arc-start) + var(--rev) * var(--arc-sweep)));
+    filter: drop-shadow(0 1px 1.5px rgba(60, 30, 20, .5));
+  }
+  /* The counterweight tail, the giveaway detail on a real pointer. */
+  .tach .needle::after {
+    content: ""; position: absolute; left: 50%; top: 50%;
+    width: 5px; height: 11%; margin-left: -2.5px;
+    background: #8d2a21;
+    clip-path: polygon(20% 0%, 80% 0%, 60% 100%, 40% 100%);
+    transform-origin: 50% 0;
     transform: rotate(calc(var(--arc-start) + var(--rev) * var(--arc-sweep)));
   }
   .tach .hub {
-    inset: calc(50% - 4px); width: 8px; height: 8px;
-    background: var(--aqua-hot);
-    box-shadow: 0 0 8px var(--aqua-glow), 0 0 0 3px var(--faint);
+    inset: calc(50% - 5px); width: 10px; height: 10px;
+    background: radial-gradient(circle at 36% 30%, #6a6560, #24211e 70%);
+    box-shadow: 0 1px 2px rgba(0,0,0,.55);
+  }
+  /* The crystal. A curved cover throws a hard highlight across the upper left
+     and a faint one back off the lower rim; without both it reads as a flat
+     printed circle. */
+  .tach .dome {
+    background:
+      linear-gradient(146deg, rgba(255,255,255,.58) 0%,
+                      rgba(255,255,255,.16) 26%, transparent 46%),
+      radial-gradient(120% 80% at 50% 118%, rgba(255,255,255,.30), transparent 60%);
+    pointer-events: none;
   }
 
   .readout {
@@ -441,33 +488,49 @@ __SOCIAL__
      width without a breakpoint per magnitude. Padding is in em so the cells
      shrink with the glyphs. */
   .odo {
-    display: flex; align-items: stretch; gap: .12em; min-width: 0;
-    font: 700 clamp(14px, 4.4vw, 24px)/1 var(--mono);
-    font-variant-numeric: tabular-nums;
+    display: flex; align-items: stretch; gap: .14em; min-width: 0;
+    font: 700 clamp(14px, 4.4vw, 25px)/1 var(--sans);
+    font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
   }
   .odo .d {
-    color: var(--ink); padding: .26em .3em; border-radius: .3em;
-    background: linear-gradient(180deg, var(--faint), transparent);
-    border: 1px solid var(--edge);
-    box-shadow: inset 0 1px 0 var(--edge-lit);
-    text-shadow: 0 0 16px var(--aqua-glow);
+    position: relative; color: var(--dial-ink);
+    padding: .3em .32em .28em; border-radius: .26em;
+    background: linear-gradient(180deg, #fffdf6 0%, var(--dial-face) 54%,
+                                var(--dial-face-edge) 100%);
+    border: 1px solid rgba(52, 40, 22, .42);
+    box-shadow:
+      inset 0 .07em .1em rgba(255, 255, 255, .95),
+      inset 0 -.07em .12em rgba(90, 70, 40, .28),
+      0 .05em .14em rgba(0, 0, 0, .38);
   }
-  .odo .sep { color: var(--dim); align-self: flex-end; padding-bottom: .26em; }
+  /* The dome over each numeral. It sits above the digit deliberately: a cover
+     glass is in front of what it covers. */
+  .odo .d::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    background: linear-gradient(178deg,
+      rgba(255,255,255,.82) 0%, rgba(255,255,255,.34) 32%,
+      rgba(255,255,255,.04) 52%, transparent 62%);
+    pointer-events: none;
+  }
+  .odo .sep {
+    color: var(--dial-cap); align-self: flex-end; padding-bottom: .3em;
+    opacity: .8;
+  }
   .visits .cap {
-    margin-top: 7px; font-size: 10px; font-weight: 600; letter-spacing: .24em;
-    text-transform: uppercase; color: var(--aqua-ink);
+    margin-top: 8px; font-size: 10px; font-weight: 600; letter-spacing: .26em;
+    text-transform: uppercase; color: var(--dial-cap);
   }
 
   @media (max-width: 420px) {
-    .visits { gap: 12px; padding: 13px 14px; }
-    .tach { width: 50px; height: 50px; }
+    .visits { gap: 14px; padding: 14px 14px; }
+    .tach { width: 62px; height: 62px; }
+    .tach .face, .tach .ticks, .tach .minor, .tach .redline { inset: 4px; }
   }
-  /* A glow is decoration; a gauge with no contrast is a bug. */
+  /* Gloss is decoration; a scale nobody can read is a bug. */
   @media (prefers-contrast: more) {
-    .visits::after { display: none; }
-    .odo .d { text-shadow: none; }
-    .tach .sweep, .tach .needle::before, .tach .hub { filter: none;
-      box-shadow: none; }
+    .tach .dome, .odo .d::after { display: none; }
+    .tach .ticks { opacity: 1; }
+    .odo .d { border-color: #000; }
   }
 
   /* Command palette */

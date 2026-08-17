@@ -49,12 +49,15 @@ characters hiding in it. Runs entirely in your browser. Nothing is uploaded.">
     --faint: rgba(0, 0, 0, 0.045);
     --accent: #0071e3;
     --accent-ink: #ffffff;
-    /* Instrument aqua, for the visit counter's dial. Mirrors shared.css;
-       test_markcheck.TestPaletteParity fails if the two ever disagree. */
-    --aqua: #00919f;
-    --aqua-hot: #00b3c4;
-    --aqua-ink: #007784;
-    --aqua-glow: rgba(0, 145, 159, 0.28);
+    /* The visit counter's dial. A physical instrument does not repaint
+       itself when the room lights change, so these are theme-invariant and
+       defined only here. --dial-cap is the exception: it is printed on the
+       page rather than on the dial, so it follows the theme. */
+    --dial-face: #f1e6cd;
+    --dial-face-edge: #d8c6a4;
+    --dial-ink: #2b2620;
+    --dial-needle: #c0392b;
+    --dial-cap: #8a7350;
     --ok: #1d8a4e;
     --info: #6e6e73;
     --low: #0a7ea4;
@@ -86,8 +89,7 @@ characters hiding in it. Runs entirely in your browser. Nothing is uploaded.">
       --dim: #98989d;
       --faint: rgba(255, 255, 255, 0.06);
       --accent: #0a84ff;
-      --aqua: #00e5ff; --aqua-hot: #a8fbff; --aqua-ink: #5ce1ff;
-      --aqua-glow: rgba(0, 229, 255, 0.55);
+      --dial-cap: #c4a97c;
       --ok: #30d158;
       --info: #98989d;
       --low: #64d2ff;
@@ -111,8 +113,7 @@ characters hiding in it. Runs entirely in your browser. Nothing is uploaded.">
     --dim: #98989d;
     --faint: rgba(255, 255, 255, 0.06);
     --accent: #0a84ff;
-    --aqua: #00e5ff; --aqua-hot: #a8fbff; --aqua-ink: #5ce1ff;
-    --aqua-glow: rgba(0, 229, 255, 0.55);
+    --dial-cap: #c4a97c;
     --ok: #30d158;
     --info: #98989d;
     --low: #64d2ff;
@@ -364,11 +365,22 @@ characters hiding in it. Runs entirely in your browser. Nothing is uploaded.">
   footer a { color: var(--accent); }
   /* The visit counter, built as an instrument rather than a label.
 
-     The dial is a tachometer that measures ORDER OF MAGNITUDE, not raw count:
-     the needle tracks log10(visits), one major tick per decade. A linear gauge
-     would sit pinned at zero for the site's first few thousand visitors and
-     then pinned at full forever after — this one is legible at six visits and
-     still legible at a million, and never needs rescaling.
+     Styled after a 1950s automotive tachometer — a Smiths or Jaeger dial: a
+     vanilla face with a printed scale, a chrome bezel, a red needle, and a
+     domed crystal over the whole thing. The digits sit under their own glass
+     domes, the way an odometer reads through a curved window.
+
+     The dial colours are deliberately NOT themed. A physical instrument does
+     not repaint itself when the room lights change; the cream face reads as an
+     object set into the page rather than part of its chrome. Only the caption
+     follows the theme, because it is printed on the page and not on the dial.
+
+     The needle tracks ORDER OF MAGNITUDE, not raw count: log10(visits), one
+     major tick per decade. A linear gauge would sit pinned at zero for the
+     site's first few thousand visitors and then pinned at full forever after —
+     this one is legible at six visits and still legible at a million, and
+     never needs rescaling. The last decade is printed as a redline, so passing
+     a million puts the needle into it.
 
      The geometry is chosen so the arithmetic comes out whole: a 240deg sweep
      over 6 decades is exactly 40deg per decade, and 40 divides 360 exactly, so
@@ -384,64 +396,99 @@ characters hiding in it. Runs entirely in your browser. Nothing is uploaded.">
   .visits {
     --arc-start: 240deg;
     --arc-sweep: 240deg;
-    display: flex; align-items: center; justify-content: center; gap: 18px;
-    width: 100%; max-width: 380px; margin: 20px auto 4px;
-    padding: 15px 22px; border-radius: 20px;
-    position: relative; overflow: hidden;
-    animation: rev-up 1.5s var(--ease) both;
-  }
-  /* A specular sweep across the top-left, the same cue the cards use. */
-  .visits::after {
-    content: ""; position: absolute; inset: 0; pointer-events: none;
-    background: linear-gradient(133deg,
-      color-mix(in srgb, var(--edge-lit) 45%, transparent) 0%,
-      transparent 46%);
+    display: flex; align-items: center; justify-content: center; gap: 20px;
+    width: 100%; max-width: 400px; margin: 20px auto 4px;
+    padding: 16px 22px; border-radius: 20px;
+    position: relative;
+    animation: rev-up 1.6s var(--ease) both;
   }
   @keyframes rev-up { from { --rev: 0; } }
 
-  .tach { position: relative; flex: none; width: 62px; height: 62px; }
+  .tach {
+    position: relative; flex: none; width: 78px; height: 78px;
+    border-radius: 50%;
+    /* Polished bezel. A conic sweep of greys is what sells metal: highlights
+       and shadows at irregular intervals, the way a turned ring catches a
+       room. */
+    background: conic-gradient(from 216deg,
+      #6f6b66, #e9e6e0 9%, #a9a49d 20%, #55514c 31%, #dedad3 44%,
+      #8e8983 57%, #f2efe9 70%, #676360 83%, #b5b0a8 92%, #6f6b66);
+    box-shadow: 0 1px 2px rgba(0,0,0,.5), 0 6px 14px rgba(0,0,0,.34);
+  }
   .tach i { position: absolute; inset: 0; display: block; border-radius: 50%; }
 
-  /* The lit arc, as a band rather than a wedge. Everything past the needle
-     stays unlit, so the gauge reads as a fill as well as a pointer. The band
-     stops short of the rim to leave the tick bezel its own clear ring; the two
-     masks must not overlap or the arc simply paints over the ticks. */
-  .tach .sweep {
-    background: conic-gradient(from var(--arc-start),
-      var(--aqua) 0deg,
-      var(--aqua-hot) calc(var(--rev) * var(--arc-sweep)),
-      color-mix(in srgb, var(--dim) 22%, transparent)
-        calc(var(--rev) * var(--arc-sweep)),
-      color-mix(in srgb, var(--dim) 22%, transparent) var(--arc-sweep),
-      transparent var(--arc-sweep));
-    -webkit-mask: radial-gradient(closest-side, transparent 56%, #000 58%,
-                                  #000 82%, transparent 84%);
-            mask: radial-gradient(closest-side, transparent 56%, #000 58%,
-                                  #000 82%, transparent 84%);
-    filter: drop-shadow(0 0 5px var(--aqua-glow));
+  /* The dial face, sunk inside the bezel. */
+  .tach .face {
+    inset: 5px;
+    background:
+      radial-gradient(circle at 34% 26%, #fffdf7 0%, var(--dial-face) 46%,
+                      var(--dial-face-edge) 100%);
+    box-shadow: inset 0 2px 4px rgba(60, 46, 24, 0.34);
   }
-  /* Nine ticks at 40deg: seven across the arc, one per decade, and two in the
-     bottom gap that read as the rest of the bezel. */
+  /* Nine major marks at 40deg: seven across the scale, one per decade, and two
+     in the gap at the bottom that read as the rest of the dial. */
   .tach .ticks {
+    inset: 5px;
     background: repeating-conic-gradient(from var(--arc-start),
-      var(--dim) 0deg 1.8deg, transparent 1.8deg 40deg);
-    -webkit-mask: radial-gradient(closest-side, transparent 88%, #000 90%);
-            mask: radial-gradient(closest-side, transparent 88%, #000 90%);
-    opacity: .5;
+      var(--dial-ink) 0deg 2.2deg, transparent 2.2deg 40deg);
+    -webkit-mask: radial-gradient(closest-side, transparent 66%, #000 68%);
+            mask: radial-gradient(closest-side, transparent 66%, #000 68%);
+    opacity: .85;
   }
+  /* Minor marks at 8deg — five to a decade, the subdivision a real dial has.
+     8 divides 360, so these also close cleanly with no stray partial mark. */
+  .tach .minor {
+    inset: 5px;
+    background: repeating-conic-gradient(from var(--arc-start),
+      var(--dial-ink) 0deg 1deg, transparent 1deg 8deg);
+    -webkit-mask: radial-gradient(closest-side, transparent 82%, #000 84%);
+            mask: radial-gradient(closest-side, transparent 82%, #000 84%);
+    opacity: .42;
+  }
+  /* The redline: the final decade of the scale, printed against the rim, so a
+     millionth visit puts the needle into it. */
+  .tach .redline {
+    inset: 5px;
+    background: conic-gradient(from var(--arc-start),
+      transparent 0deg 200deg, var(--dial-needle) 200deg 240deg,
+      transparent 240deg);
+    -webkit-mask: radial-gradient(closest-side, transparent 87%, #000 89%);
+            mask: radial-gradient(closest-side, transparent 87%, #000 89%);
+  }
+  /* A tapered pointer: wide at the hub, fine at the tip. A parallel-sided bar
+     reads as a clock hand, which is the wrong instrument entirely. */
   .tach .needle::before {
     content: ""; position: absolute; left: 50%; bottom: 50%;
-    width: 2px; height: 36%; margin-left: -1px; border-radius: 2px;
-    background: linear-gradient(to top,
-      color-mix(in srgb, var(--aqua-hot) 25%, transparent), var(--aqua-hot));
-    box-shadow: 0 0 7px var(--aqua-glow);
+    width: 6px; height: 35%; margin-left: -3px;
+    background: linear-gradient(to top, #8d2a21, var(--dial-needle) 55%);
+    clip-path: polygon(24% 100%, 76% 100%, 58% 0%, 42% 0%);
     transform-origin: 50% 100%;
+    transform: rotate(calc(var(--arc-start) + var(--rev) * var(--arc-sweep)));
+    filter: drop-shadow(0 1px 1.5px rgba(60, 30, 20, .5));
+  }
+  /* The counterweight tail, the giveaway detail on a real pointer. */
+  .tach .needle::after {
+    content: ""; position: absolute; left: 50%; top: 50%;
+    width: 5px; height: 11%; margin-left: -2.5px;
+    background: #8d2a21;
+    clip-path: polygon(20% 0%, 80% 0%, 60% 100%, 40% 100%);
+    transform-origin: 50% 0;
     transform: rotate(calc(var(--arc-start) + var(--rev) * var(--arc-sweep)));
   }
   .tach .hub {
-    inset: calc(50% - 4px); width: 8px; height: 8px;
-    background: var(--aqua-hot);
-    box-shadow: 0 0 8px var(--aqua-glow), 0 0 0 3px var(--faint);
+    inset: calc(50% - 5px); width: 10px; height: 10px;
+    background: radial-gradient(circle at 36% 30%, #6a6560, #24211e 70%);
+    box-shadow: 0 1px 2px rgba(0,0,0,.55);
+  }
+  /* The crystal. A curved cover throws a hard highlight across the upper left
+     and a faint one back off the lower rim; without both it reads as a flat
+     printed circle. */
+  .tach .dome {
+    background:
+      linear-gradient(146deg, rgba(255,255,255,.58) 0%,
+                      rgba(255,255,255,.16) 26%, transparent 46%),
+      radial-gradient(120% 80% at 50% 118%, rgba(255,255,255,.30), transparent 60%);
+    pointer-events: none;
   }
 
   .readout {
@@ -454,33 +501,49 @@ characters hiding in it. Runs entirely in your browser. Nothing is uploaded.">
      width without a breakpoint per magnitude. Padding is in em so the cells
      shrink with the glyphs. */
   .odo {
-    display: flex; align-items: stretch; gap: .12em; min-width: 0;
-    font: 700 clamp(14px, 4.4vw, 24px)/1 var(--mono);
-    font-variant-numeric: tabular-nums;
+    display: flex; align-items: stretch; gap: .14em; min-width: 0;
+    font: 700 clamp(14px, 4.4vw, 25px)/1 var(--sans);
+    font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
   }
   .odo .d {
-    color: var(--ink); padding: .26em .3em; border-radius: .3em;
-    background: linear-gradient(180deg, var(--faint), transparent);
-    border: 1px solid var(--edge);
-    box-shadow: inset 0 1px 0 var(--edge-lit);
-    text-shadow: 0 0 16px var(--aqua-glow);
+    position: relative; color: var(--dial-ink);
+    padding: .3em .32em .28em; border-radius: .26em;
+    background: linear-gradient(180deg, #fffdf6 0%, var(--dial-face) 54%,
+                                var(--dial-face-edge) 100%);
+    border: 1px solid rgba(52, 40, 22, .42);
+    box-shadow:
+      inset 0 .07em .1em rgba(255, 255, 255, .95),
+      inset 0 -.07em .12em rgba(90, 70, 40, .28),
+      0 .05em .14em rgba(0, 0, 0, .38);
   }
-  .odo .sep { color: var(--dim); align-self: flex-end; padding-bottom: .26em; }
+  /* The dome over each numeral. It sits above the digit deliberately: a cover
+     glass is in front of what it covers. */
+  .odo .d::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    background: linear-gradient(178deg,
+      rgba(255,255,255,.82) 0%, rgba(255,255,255,.34) 32%,
+      rgba(255,255,255,.04) 52%, transparent 62%);
+    pointer-events: none;
+  }
+  .odo .sep {
+    color: var(--dial-cap); align-self: flex-end; padding-bottom: .3em;
+    opacity: .8;
+  }
   .visits .cap {
-    margin-top: 7px; font-size: 10px; font-weight: 600; letter-spacing: .24em;
-    text-transform: uppercase; color: var(--aqua-ink);
+    margin-top: 8px; font-size: 10px; font-weight: 600; letter-spacing: .26em;
+    text-transform: uppercase; color: var(--dial-cap);
   }
 
   @media (max-width: 420px) {
-    .visits { gap: 12px; padding: 13px 14px; }
-    .tach { width: 50px; height: 50px; }
+    .visits { gap: 14px; padding: 14px 14px; }
+    .tach { width: 62px; height: 62px; }
+    .tach .face, .tach .ticks, .tach .minor, .tach .redline { inset: 4px; }
   }
-  /* A glow is decoration; a gauge with no contrast is a bug. */
+  /* Gloss is decoration; a scale nobody can read is a bug. */
   @media (prefers-contrast: more) {
-    .visits::after { display: none; }
-    .odo .d { text-shadow: none; }
-    .tach .sweep, .tach .needle::before, .tach .hub { filter: none;
-      box-shadow: none; }
+    .tach .dome, .odo .d::after { display: none; }
+    .tach .ticks { opacity: 1; }
+    .odo .d { border-color: #000; }
   }
 
   /* Command palette */
@@ -646,7 +709,7 @@ characters hiding in it. Runs entirely in your browser. Nothing is uploaded.">
   </details>
 
   <footer>
-    markcheck 2.4.0 &middot; MIT licensed &middot;
+    markcheck 2.4.1 &middot; MIT licensed &middot;
     <a href="https://github.com/MavProDev/markcheck" rel="noopener noreferrer">source
     and command line version on GitHub</a><br>
     This page is generated from the same character tables the command line tool
@@ -670,7 +733,7 @@ characters hiding in it. Runs entirely in your browser. Nothing is uploaded.">
 <script>
 // GENERATED FROM markcheck.py. Do not edit by hand.
 // Regenerate with tools/build_web.py so the browser and the CLI cannot drift.
-const T = {"SINGLES":{"173":["SOFT HYPHEN","invisible-format"],"847":["COMBINING GRAPHEME JOINER","invisible-format"],"1564":["ARABIC LETTER MARK","bidi"],"4447":["HANGUL CHOSEONG FILLER","invisible-format"],"4448":["HANGUL JUNGSEONG FILLER","invisible-format"],"6068":["KHMER VOWEL INHERENT AQ","invisible-format"],"6069":["KHMER VOWEL INHERENT AA","invisible-format"],"6158":["MONGOLIAN VOWEL SEPARATOR","invisible-format"],"8203":["ZERO WIDTH SPACE","zero-width"],"8204":["ZERO WIDTH NON-JOINER","zero-width"],"8205":["ZERO WIDTH JOINER","zero-width"],"8206":["LEFT-TO-RIGHT MARK","bidi"],"8207":["RIGHT-TO-LEFT MARK","bidi"],"8234":["LEFT-TO-RIGHT EMBEDDING","bidi"],"8235":["RIGHT-TO-LEFT EMBEDDING","bidi"],"8236":["POP DIRECTIONAL FORMATTING","bidi"],"8237":["LEFT-TO-RIGHT OVERRIDE","bidi"],"8238":["RIGHT-TO-LEFT OVERRIDE","bidi"],"8288":["WORD JOINER","zero-width"],"8289":["FUNCTION APPLICATION","zero-width"],"8290":["INVISIBLE TIMES","zero-width"],"8291":["INVISIBLE SEPARATOR","zero-width"],"8292":["INVISIBLE PLUS","zero-width"],"8294":["LEFT-TO-RIGHT ISOLATE","bidi"],"8295":["RIGHT-TO-LEFT ISOLATE","bidi"],"8296":["FIRST STRONG ISOLATE","bidi"],"8297":["POP DIRECTIONAL ISOLATE","bidi"],"8298":["INHIBIT SYMMETRIC SWAPPING","invisible-format"],"8299":["ACTIVATE SYMMETRIC SWAPPING","invisible-format"],"8300":["INHIBIT ARABIC FORM SHAPING","invisible-format"],"8301":["ACTIVATE ARABIC FORM SHAPING","invisible-format"],"8302":["NATIONAL DIGIT SHAPES","invisible-format"],"8303":["NOMINAL DIGIT SHAPES","invisible-format"],"10240":["BRAILLE PATTERN BLANK","invisible-format"],"12644":["HANGUL FILLER","invisible-format"],"65279":["ZERO WIDTH NO-BREAK SPACE (BOM)","zero-width"],"65440":["HALFWIDTH HANGUL FILLER","invisible-format"],"65529":["INTERLINEAR ANNOTATION ANCHOR","invisible-format"],"65530":["INTERLINEAR ANNOTATION SEPARATOR","invisible-format"],"65531":["INTERLINEAR ANNOTATION TERMINATOR","invisible-format"]},"WS":{"133":"NEXT LINE (NEL)","160":"NO-BREAK SPACE","5760":"OGHAM SPACE MARK","8192":"EN QUAD","8193":"EM QUAD","8194":"EN SPACE","8195":"EM SPACE","8196":"THREE-PER-EM SPACE","8197":"FOUR-PER-EM SPACE","8198":"SIX-PER-EM SPACE","8199":"FIGURE SPACE","8200":"PUNCTUATION SPACE","8201":"THIN SPACE","8202":"HAIR SPACE","8232":"LINE SEPARATOR","8233":"PARAGRAPH SEPARATOR","8239":"NARROW NO-BREAK SPACE","8287":"MEDIUM MATHEMATICAL SPACE","12288":"IDEOGRAPHIC SPACE"},"TAGS":{"917505":"LANGUAGE TAG","917536":"TAG SPACE","917537":"TAG EXCLAMATION MARK","917538":"TAG QUOTATION MARK","917539":"TAG NUMBER SIGN","917540":"TAG DOLLAR SIGN","917541":"TAG PERCENT SIGN","917542":"TAG AMPERSAND","917543":"TAG APOSTROPHE","917544":"TAG LEFT PARENTHESIS","917545":"TAG RIGHT PARENTHESIS","917546":"TAG ASTERISK","917547":"TAG PLUS SIGN","917548":"TAG COMMA","917549":"TAG HYPHEN-MINUS","917550":"TAG FULL STOP","917551":"TAG SOLIDUS","917552":"TAG DIGIT ZERO","917553":"TAG DIGIT ONE","917554":"TAG DIGIT TWO","917555":"TAG DIGIT THREE","917556":"TAG DIGIT FOUR","917557":"TAG DIGIT FIVE","917558":"TAG DIGIT SIX","917559":"TAG DIGIT SEVEN","917560":"TAG DIGIT EIGHT","917561":"TAG DIGIT NINE","917562":"TAG COLON","917563":"TAG SEMICOLON","917564":"TAG LESS-THAN SIGN","917565":"TAG EQUALS SIGN","917566":"TAG GREATER-THAN SIGN","917567":"TAG QUESTION MARK","917568":"TAG COMMERCIAL AT","917569":"TAG LATIN CAPITAL LETTER A","917570":"TAG LATIN CAPITAL LETTER B","917571":"TAG LATIN CAPITAL LETTER C","917572":"TAG LATIN CAPITAL LETTER D","917573":"TAG LATIN CAPITAL LETTER E","917574":"TAG LATIN CAPITAL LETTER F","917575":"TAG LATIN CAPITAL LETTER G","917576":"TAG LATIN CAPITAL LETTER H","917577":"TAG LATIN CAPITAL LETTER I","917578":"TAG LATIN CAPITAL LETTER J","917579":"TAG LATIN CAPITAL LETTER K","917580":"TAG LATIN CAPITAL LETTER L","917581":"TAG LATIN CAPITAL LETTER M","917582":"TAG LATIN CAPITAL LETTER N","917583":"TAG LATIN CAPITAL LETTER O","917584":"TAG LATIN CAPITAL LETTER P","917585":"TAG LATIN CAPITAL LETTER Q","917586":"TAG LATIN CAPITAL LETTER R","917587":"TAG LATIN CAPITAL LETTER S","917588":"TAG LATIN CAPITAL LETTER T","917589":"TAG LATIN CAPITAL LETTER U","917590":"TAG LATIN CAPITAL LETTER V","917591":"TAG LATIN CAPITAL LETTER W","917592":"TAG LATIN CAPITAL LETTER X","917593":"TAG LATIN CAPITAL LETTER Y","917594":"TAG LATIN CAPITAL LETTER Z","917595":"TAG LEFT SQUARE BRACKET","917596":"TAG REVERSE SOLIDUS","917597":"TAG RIGHT SQUARE BRACKET","917598":"TAG CIRCUMFLEX ACCENT","917599":"TAG LOW LINE","917600":"TAG GRAVE ACCENT","917601":"TAG LATIN SMALL LETTER A","917602":"TAG LATIN SMALL LETTER B","917603":"TAG LATIN SMALL LETTER C","917604":"TAG LATIN SMALL LETTER D","917605":"TAG LATIN SMALL LETTER E","917606":"TAG LATIN SMALL LETTER F","917607":"TAG LATIN SMALL LETTER G","917608":"TAG LATIN SMALL LETTER H","917609":"TAG LATIN SMALL LETTER I","917610":"TAG LATIN SMALL LETTER J","917611":"TAG LATIN SMALL LETTER K","917612":"TAG LATIN SMALL LETTER L","917613":"TAG LATIN SMALL LETTER M","917614":"TAG LATIN SMALL LETTER N","917615":"TAG LATIN SMALL LETTER O","917616":"TAG LATIN SMALL LETTER P","917617":"TAG LATIN SMALL LETTER Q","917618":"TAG LATIN SMALL LETTER R","917619":"TAG LATIN SMALL LETTER S","917620":"TAG LATIN SMALL LETTER T","917621":"TAG LATIN SMALL LETTER U","917622":"TAG LATIN SMALL LETTER V","917623":"TAG LATIN SMALL LETTER W","917624":"TAG LATIN SMALL LETTER X","917625":"TAG LATIN SMALL LETTER Y","917626":"TAG LATIN SMALL LETTER Z","917627":"TAG LEFT CURLY BRACKET","917628":"TAG VERTICAL LINE","917629":"TAG RIGHT CURLY BRACKET","917630":"TAG TILDE","917631":"CANCEL TAG"},"FVS":{"6155":"MONGOLIAN FREE VARIATION SELECTOR ONE","6156":"MONGOLIAN FREE VARIATION SELECTOR TWO","6157":"MONGOLIAN FREE VARIATION SELECTOR THREE","6159":"MONGOLIAN FREE VARIATION SELECTOR FOUR"},"REPL":{"133":"\n","160":" ","5760":" ","8192":" ","8193":" ","8194":" ","8195":" ","8196":" ","8197":" ","8198":" ","8199":" ","8200":" ","8201":" ","8202":" ","8232":"\n","8233":"\n","8239":" ","8287":" ","12288":" "},"CATEGORIES":["zero-width","invisible-format","bidi","variation-selector","tag","whitespace","default-ignorable"],"DEFAULTS":["zero-width","invisible-format","bidi","variation-selector","tag","whitespace"],"DESCRIPTIONS":{"zero-width":"Zero-advance invisibles (ZWSP, ZWJ, ZWNJ, word joiner, invisible math operators, BOM). ZWJ is also a valid emoji and Indic joiner; likely-legitimate uses are annotated.","invisible-format":"Format and filler code points that render blank (soft hyphen, grapheme joiner, script fillers, interlinear annotation, deprecated format controls).","bidi":"Bidirectional controls. Valid in RTL scripts; the override and isolate members enable Trojan-Source reordering.","variation-selector":"Variation selectors. Normally style glyphs; can carry hidden payloads.","tag":"Unicode Tags block. Invisible; used for text smuggling and prompt injection. Rare in ordinary prose.","whitespace":"Nonstandard whitespace (NBSP, narrow no-break space, en and em spaces, line and paragraph separators). Renders like a space but differs from ASCII space; the class behind the 2025 NNBSP fingerprint reports. Common in typeset and word-processor text; --exclude whitespace to skip.","default-ignorable":"OPT-IN. Every remaining Unicode Default_Ignorable_Code_Point not covered above, including reserved ranges. Off by default because it is noisy; enable with --include-default-ignorables for forensic work."},"PICTO":[[126976,129791],[9728,10175],[127462,127487],[11008,11263],[65039,65039]],"SEVERITIES":["info","low","medium","high"],"HIGH_BIDI":[[8234,8238],[8294,8297]],"DI":[[173,173],[847,847],[1564,1564],[4447,4448],[6068,6069],[6155,6159],[8203,8207],[8234,8238],[8288,8303],[12644,12644],[65024,65039],[65279,65279],[65440,65440],[65520,65528],[113824,113827],[119155,119162],[917504,921599]],"DI_NAME":"DEFAULT IGNORABLE CODE POINT","DIGITS":[[48,57],[178,179],[185,185],[1632,1641],[1776,1785],[1984,1993],[2406,2415],[2534,2543],[2662,2671],[2790,2799],[2918,2927],[3046,3055],[3174,3183],[3302,3311],[3430,3439],[3558,3567],[3664,3673],[3792,3801],[3872,3881],[4160,4169],[4240,4249],[4969,4977],[6112,6121],[6160,6169],[6470,6479],[6608,6618],[6784,6793],[6800,6809],[6992,7001],[7088,7097],[7232,7241],[7248,7257],[8304,8304],[8308,8313],[8320,8329],[9312,9320],[9332,9340],[9352,9360],[9450,9450],[9461,9469],[9471,9471],[10102,10110],[10112,10120],[10122,10130],[42528,42537],[43216,43225],[43264,43273],[43472,43481],[43504,43513],[43600,43609],[44016,44025],[65296,65305],[66720,66729],[68160,68163],[68912,68921],[69216,69224],[69714,69722],[69734,69743],[69872,69881],[69942,69951],[70096,70105],[70384,70393],[70736,70745],[70864,70873],[71248,71257],[71360,71369],[71472,71481],[71904,71913],[72016,72025],[72784,72793],[73040,73049],[73120,73129],[73552,73561],[92768,92777],[92864,92873],[93008,93017],[120782,120831],[123200,123209],[123632,123641],[124144,124153],[125264,125273],[127232,127242],[130032,130041]],"UNICODE_VERSION":"15.1.0","VERSION":"2.4.0"};
+const T = {"SINGLES":{"173":["SOFT HYPHEN","invisible-format"],"847":["COMBINING GRAPHEME JOINER","invisible-format"],"1564":["ARABIC LETTER MARK","bidi"],"4447":["HANGUL CHOSEONG FILLER","invisible-format"],"4448":["HANGUL JUNGSEONG FILLER","invisible-format"],"6068":["KHMER VOWEL INHERENT AQ","invisible-format"],"6069":["KHMER VOWEL INHERENT AA","invisible-format"],"6158":["MONGOLIAN VOWEL SEPARATOR","invisible-format"],"8203":["ZERO WIDTH SPACE","zero-width"],"8204":["ZERO WIDTH NON-JOINER","zero-width"],"8205":["ZERO WIDTH JOINER","zero-width"],"8206":["LEFT-TO-RIGHT MARK","bidi"],"8207":["RIGHT-TO-LEFT MARK","bidi"],"8234":["LEFT-TO-RIGHT EMBEDDING","bidi"],"8235":["RIGHT-TO-LEFT EMBEDDING","bidi"],"8236":["POP DIRECTIONAL FORMATTING","bidi"],"8237":["LEFT-TO-RIGHT OVERRIDE","bidi"],"8238":["RIGHT-TO-LEFT OVERRIDE","bidi"],"8288":["WORD JOINER","zero-width"],"8289":["FUNCTION APPLICATION","zero-width"],"8290":["INVISIBLE TIMES","zero-width"],"8291":["INVISIBLE SEPARATOR","zero-width"],"8292":["INVISIBLE PLUS","zero-width"],"8294":["LEFT-TO-RIGHT ISOLATE","bidi"],"8295":["RIGHT-TO-LEFT ISOLATE","bidi"],"8296":["FIRST STRONG ISOLATE","bidi"],"8297":["POP DIRECTIONAL ISOLATE","bidi"],"8298":["INHIBIT SYMMETRIC SWAPPING","invisible-format"],"8299":["ACTIVATE SYMMETRIC SWAPPING","invisible-format"],"8300":["INHIBIT ARABIC FORM SHAPING","invisible-format"],"8301":["ACTIVATE ARABIC FORM SHAPING","invisible-format"],"8302":["NATIONAL DIGIT SHAPES","invisible-format"],"8303":["NOMINAL DIGIT SHAPES","invisible-format"],"10240":["BRAILLE PATTERN BLANK","invisible-format"],"12644":["HANGUL FILLER","invisible-format"],"65279":["ZERO WIDTH NO-BREAK SPACE (BOM)","zero-width"],"65440":["HALFWIDTH HANGUL FILLER","invisible-format"],"65529":["INTERLINEAR ANNOTATION ANCHOR","invisible-format"],"65530":["INTERLINEAR ANNOTATION SEPARATOR","invisible-format"],"65531":["INTERLINEAR ANNOTATION TERMINATOR","invisible-format"]},"WS":{"133":"NEXT LINE (NEL)","160":"NO-BREAK SPACE","5760":"OGHAM SPACE MARK","8192":"EN QUAD","8193":"EM QUAD","8194":"EN SPACE","8195":"EM SPACE","8196":"THREE-PER-EM SPACE","8197":"FOUR-PER-EM SPACE","8198":"SIX-PER-EM SPACE","8199":"FIGURE SPACE","8200":"PUNCTUATION SPACE","8201":"THIN SPACE","8202":"HAIR SPACE","8232":"LINE SEPARATOR","8233":"PARAGRAPH SEPARATOR","8239":"NARROW NO-BREAK SPACE","8287":"MEDIUM MATHEMATICAL SPACE","12288":"IDEOGRAPHIC SPACE"},"TAGS":{"917505":"LANGUAGE TAG","917536":"TAG SPACE","917537":"TAG EXCLAMATION MARK","917538":"TAG QUOTATION MARK","917539":"TAG NUMBER SIGN","917540":"TAG DOLLAR SIGN","917541":"TAG PERCENT SIGN","917542":"TAG AMPERSAND","917543":"TAG APOSTROPHE","917544":"TAG LEFT PARENTHESIS","917545":"TAG RIGHT PARENTHESIS","917546":"TAG ASTERISK","917547":"TAG PLUS SIGN","917548":"TAG COMMA","917549":"TAG HYPHEN-MINUS","917550":"TAG FULL STOP","917551":"TAG SOLIDUS","917552":"TAG DIGIT ZERO","917553":"TAG DIGIT ONE","917554":"TAG DIGIT TWO","917555":"TAG DIGIT THREE","917556":"TAG DIGIT FOUR","917557":"TAG DIGIT FIVE","917558":"TAG DIGIT SIX","917559":"TAG DIGIT SEVEN","917560":"TAG DIGIT EIGHT","917561":"TAG DIGIT NINE","917562":"TAG COLON","917563":"TAG SEMICOLON","917564":"TAG LESS-THAN SIGN","917565":"TAG EQUALS SIGN","917566":"TAG GREATER-THAN SIGN","917567":"TAG QUESTION MARK","917568":"TAG COMMERCIAL AT","917569":"TAG LATIN CAPITAL LETTER A","917570":"TAG LATIN CAPITAL LETTER B","917571":"TAG LATIN CAPITAL LETTER C","917572":"TAG LATIN CAPITAL LETTER D","917573":"TAG LATIN CAPITAL LETTER E","917574":"TAG LATIN CAPITAL LETTER F","917575":"TAG LATIN CAPITAL LETTER G","917576":"TAG LATIN CAPITAL LETTER H","917577":"TAG LATIN CAPITAL LETTER I","917578":"TAG LATIN CAPITAL LETTER J","917579":"TAG LATIN CAPITAL LETTER K","917580":"TAG LATIN CAPITAL LETTER L","917581":"TAG LATIN CAPITAL LETTER M","917582":"TAG LATIN CAPITAL LETTER N","917583":"TAG LATIN CAPITAL LETTER O","917584":"TAG LATIN CAPITAL LETTER P","917585":"TAG LATIN CAPITAL LETTER Q","917586":"TAG LATIN CAPITAL LETTER R","917587":"TAG LATIN CAPITAL LETTER S","917588":"TAG LATIN CAPITAL LETTER T","917589":"TAG LATIN CAPITAL LETTER U","917590":"TAG LATIN CAPITAL LETTER V","917591":"TAG LATIN CAPITAL LETTER W","917592":"TAG LATIN CAPITAL LETTER X","917593":"TAG LATIN CAPITAL LETTER Y","917594":"TAG LATIN CAPITAL LETTER Z","917595":"TAG LEFT SQUARE BRACKET","917596":"TAG REVERSE SOLIDUS","917597":"TAG RIGHT SQUARE BRACKET","917598":"TAG CIRCUMFLEX ACCENT","917599":"TAG LOW LINE","917600":"TAG GRAVE ACCENT","917601":"TAG LATIN SMALL LETTER A","917602":"TAG LATIN SMALL LETTER B","917603":"TAG LATIN SMALL LETTER C","917604":"TAG LATIN SMALL LETTER D","917605":"TAG LATIN SMALL LETTER E","917606":"TAG LATIN SMALL LETTER F","917607":"TAG LATIN SMALL LETTER G","917608":"TAG LATIN SMALL LETTER H","917609":"TAG LATIN SMALL LETTER I","917610":"TAG LATIN SMALL LETTER J","917611":"TAG LATIN SMALL LETTER K","917612":"TAG LATIN SMALL LETTER L","917613":"TAG LATIN SMALL LETTER M","917614":"TAG LATIN SMALL LETTER N","917615":"TAG LATIN SMALL LETTER O","917616":"TAG LATIN SMALL LETTER P","917617":"TAG LATIN SMALL LETTER Q","917618":"TAG LATIN SMALL LETTER R","917619":"TAG LATIN SMALL LETTER S","917620":"TAG LATIN SMALL LETTER T","917621":"TAG LATIN SMALL LETTER U","917622":"TAG LATIN SMALL LETTER V","917623":"TAG LATIN SMALL LETTER W","917624":"TAG LATIN SMALL LETTER X","917625":"TAG LATIN SMALL LETTER Y","917626":"TAG LATIN SMALL LETTER Z","917627":"TAG LEFT CURLY BRACKET","917628":"TAG VERTICAL LINE","917629":"TAG RIGHT CURLY BRACKET","917630":"TAG TILDE","917631":"CANCEL TAG"},"FVS":{"6155":"MONGOLIAN FREE VARIATION SELECTOR ONE","6156":"MONGOLIAN FREE VARIATION SELECTOR TWO","6157":"MONGOLIAN FREE VARIATION SELECTOR THREE","6159":"MONGOLIAN FREE VARIATION SELECTOR FOUR"},"REPL":{"133":"\n","160":" ","5760":" ","8192":" ","8193":" ","8194":" ","8195":" ","8196":" ","8197":" ","8198":" ","8199":" ","8200":" ","8201":" ","8202":" ","8232":"\n","8233":"\n","8239":" ","8287":" ","12288":" "},"CATEGORIES":["zero-width","invisible-format","bidi","variation-selector","tag","whitespace","default-ignorable"],"DEFAULTS":["zero-width","invisible-format","bidi","variation-selector","tag","whitespace"],"DESCRIPTIONS":{"zero-width":"Zero-advance invisibles (ZWSP, ZWJ, ZWNJ, word joiner, invisible math operators, BOM). ZWJ is also a valid emoji and Indic joiner; likely-legitimate uses are annotated.","invisible-format":"Format and filler code points that render blank (soft hyphen, grapheme joiner, script fillers, interlinear annotation, deprecated format controls).","bidi":"Bidirectional controls. Valid in RTL scripts; the override and isolate members enable Trojan-Source reordering.","variation-selector":"Variation selectors. Normally style glyphs; can carry hidden payloads.","tag":"Unicode Tags block. Invisible; used for text smuggling and prompt injection. Rare in ordinary prose.","whitespace":"Nonstandard whitespace (NBSP, narrow no-break space, en and em spaces, line and paragraph separators). Renders like a space but differs from ASCII space; the class behind the 2025 NNBSP fingerprint reports. Common in typeset and word-processor text; --exclude whitespace to skip.","default-ignorable":"OPT-IN. Every remaining Unicode Default_Ignorable_Code_Point not covered above, including reserved ranges. Off by default because it is noisy; enable with --include-default-ignorables for forensic work."},"PICTO":[[126976,129791],[9728,10175],[127462,127487],[11008,11263],[65039,65039]],"SEVERITIES":["info","low","medium","high"],"HIGH_BIDI":[[8234,8238],[8294,8297]],"DI":[[173,173],[847,847],[1564,1564],[4447,4448],[6068,6069],[6155,6159],[8203,8207],[8234,8238],[8288,8303],[12644,12644],[65024,65039],[65279,65279],[65440,65440],[65520,65528],[113824,113827],[119155,119162],[917504,921599]],"DI_NAME":"DEFAULT IGNORABLE CODE POINT","DIGITS":[[48,57],[178,179],[185,185],[1632,1641],[1776,1785],[1984,1993],[2406,2415],[2534,2543],[2662,2671],[2790,2799],[2918,2927],[3046,3055],[3174,3183],[3302,3311],[3430,3439],[3558,3567],[3664,3673],[3792,3801],[3872,3881],[4160,4169],[4240,4249],[4969,4977],[6112,6121],[6160,6169],[6470,6479],[6608,6618],[6784,6793],[6800,6809],[6992,7001],[7088,7097],[7232,7241],[7248,7257],[8304,8304],[8308,8313],[8320,8329],[9312,9320],[9332,9340],[9352,9360],[9450,9450],[9461,9469],[9471,9471],[10102,10110],[10112,10120],[10122,10130],[42528,42537],[43216,43225],[43264,43273],[43472,43481],[43504,43513],[43600,43609],[44016,44025],[65296,65305],[66720,66729],[68160,68163],[68912,68921],[69216,69224],[69714,69722],[69734,69743],[69872,69881],[69942,69951],[70096,70105],[70384,70393],[70736,70745],[70864,70873],[71248,71257],[71360,71369],[71472,71481],[71904,71913],[72016,72025],[72784,72793],[73040,73049],[73120,73129],[73552,73561],[92768,92777],[92864,92873],[93008,93017],[120782,120831],[123200,123209],[123632,123641],[124144,124153],[125264,125273],[127232,127242],[130032,130041]],"UNICODE_VERSION":"15.1.0","VERSION":"2.4.1"};
 
 function pictographic(cp) {
   for (const [lo, hi] of T.PICTO) { if (cp >= lo && cp <= hi) return true; }

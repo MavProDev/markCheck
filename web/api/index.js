@@ -114,8 +114,9 @@ function markup(count) {
     ' role="img" aria-label="' + shown + " " + word + ". Counted on the " +
     'server. No IP address, user agent, or per-visitor record is stored.">' +
     '<span class="tach" aria-hidden="true">' +
-    '<i class="ticks"></i><i class="sweep"></i>' +
-    '<i class="needle"></i><i class="hub"></i>' +
+    '<i class="face"></i><i class="ticks"></i><i class="minor"></i>' +
+    '<i class="redline"></i>' +
+    '<i class="needle"></i><i class="hub"></i><i class="dome"></i>' +
     "</span>" +
     '<span class="readout" aria-hidden="true">' +
     '<span class="odo">' + cells + "</span>" +

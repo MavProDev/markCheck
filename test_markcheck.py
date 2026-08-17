@@ -1093,17 +1093,21 @@ class TestPaletteParity(unittest.TestCase):
         # The counter lives on the scanner page, which does not read
         # shared.css. Referencing a token defined only there renders the dial
         # invisible -- silently, since an unresolved custom property is not an
-        # error.
+        # error. This is not hypothetical: it happened during 2.4.0.
+        #
+        # The base :root is the right place to check. The dial colours are
+        # theme-invariant by design (a physical instrument does not repaint
+        # itself), so they are defined once and inherited by both themes;
+        # requiring them in every theme block would be wrong.
         here = os.path.dirname(SCRIPT)
         with open(os.path.join(here, "tools", "page.template.html"),
                   encoding="utf-8") as fh:
             page = fh.read()
-        used = set(re.findall(r"var\((--aqua[a-z-]*)\)", page))
-        self.assertTrue(used, "counter no longer uses the aqua tokens")
-        for selector in (":root {", ':root[data-theme="dark"]'):
-            defined = set(self._tokens(page, selector))
-            self.assertEqual(used - defined, set(),
-                             f"{selector} is missing {used - defined}")
+        used = set(re.findall(r"var\((--dial-[a-z-]*)\)", page))
+        self.assertTrue(used, "counter no longer uses the dial tokens")
+        defined = set(self._tokens(page, ":root {"))
+        self.assertEqual(used - defined, set(),
+                         f":root is missing {used - defined}")
 
 
 if __name__ == "__main__":

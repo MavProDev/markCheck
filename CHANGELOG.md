@@ -1,5 +1,32 @@
 # Changelog
 
+## 2.4.1
+### Changed
+- **The visit counter is redrawn as a 1950s tachometer.** The first attempt was
+  a neon dial that read as cheap against a page built on restraint. It is now a
+  Smiths-style instrument: a vanilla face with a printed scale, subdivided minor
+  marks, a polished bezel, a tapered red pointer with its counterweight tail,
+  and a domed crystal throwing a highlight across the upper left. Each digit
+  sits under its own glass dome, the way an odometer reads through a curved
+  window.
+- The final decade of the scale is printed as a **redline**, so a millionth
+  visit puts the needle into it. The scale itself is unchanged: still
+  logarithmic, still one major mark per decade.
+- The dial colours are deliberately **not themed**. A physical instrument does
+  not repaint itself when the room lights change, so the cream face is constant
+  in light and dark and reads as an object set into the page rather than part
+  of its chrome. Only the caption follows the theme, because it is printed on
+  the page and not on the dial.
+- Minor marks sit at 8 degrees, five to a decade. Like the 40-degree major
+  spacing, 8 divides 360 exactly, so the subdivision closes cleanly with no
+  stray partial mark where the scale meets the gap.
+
+### Notes
+- The instrument tokens moved out of `tools/shared.css`, which the scanner page
+  does not read, and into the page that actually uses them. The guard added in
+  2.4.0 now checks the base `:root` rather than every theme block, which is the
+  correct invariant for a colour that is intentionally theme-invariant.
+
 ## 2.4.0
 ### Added
 - **The visit counter is now an instrument.** It was the least considered

@@ -129,11 +129,22 @@ function markup(count) {
 module.exports = async function handler(req, res) {
   const page = loadPage();
   if (page === null) {
-    // Could not read the document. The static file is still served by the
-    // filesystem handler, so hand the visitor straight to it rather than 500.
-    res.statusCode = 302;
-    res.setHeader("Location", "/index.html");
-    res.end();
+    // The document could not be read from the bundle. This used to redirect to
+    // /index.html and let the filesystem handler serve it, but that path now
+    // canonicalises back to /, which lands here again: an infinite loop. Serve
+    // something self-contained and honest instead. A missing bundle is a
+    // broken deploy, not a runtime failure to paper over.
+    res.statusCode = 503;
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    res.end(
+      "<!doctype html><meta charset=utf-8>" +
+      "<title>markcheck</title>" +
+      "<p>The scanner could not be loaded. The command line tool, and an " +
+      "offline copy of this page, are at " +
+      '<a href="https://github.com/MavProDev/markcheck">' +
+      "github.com/MavProDev/markcheck</a>."
+    );
     return;
   }
 

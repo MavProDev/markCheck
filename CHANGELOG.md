@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.4.2
+### Fixed
+- **The visit counter vanished after navigating scanner to about and back.**
+  The about and changelog pages link to the scanner as a relative
+  `index.html`, which is what keeps them navigable when the pages are opened
+  from disk. On the deployed site that path was served straight off the
+  filesystem, skipping the function that substitutes the count — so the
+  placeholder arrived in the browser as an inert HTML comment and the counter
+  simply was not there. `/index.html` now permanently redirects to `/`, which
+  also matches the `og:url` and canonical tags, since those have always named
+  `/` and never `/index.html`.
+- That redirect created a loop the fix had to close as well: the function's
+  own failure path redirected to `/index.html`, which now comes back to `/`
+  and lands in the function again. A missing bundle is a broken deploy rather
+  than a runtime failure worth papering over, so it now answers directly with
+  a small self-contained page pointing at the command line tool.
+
+### Added
+- `TestDeploymentRoutes` reads `web/vercel.json` and checks that `/` still
+  reaches the function, that `/index.html` permanently redirects to `/`, that
+  the redirect is ordered ahead of the filesystem handler, and that the
+  relative link the redirect exists for is still in the templates. Nothing
+  else in the suite looked at the route table.
+- `tools/check_api.js` now covers the missing-document path and asserts it
+  sends no `Location` header at all.
+
 ## 2.4.1
 ### Changed
 - **The visit counter is redrawn as a 1950s tachometer.** The first attempt was

@@ -28,7 +28,7 @@ import tempfile
 import unicodedata
 from collections import Counter, namedtuple
 
-__version__ = "2.4.1"
+__version__ = "2.4.2"
 
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024  # 100 MB
 DEFAULT_MAX_HITS = 200_000

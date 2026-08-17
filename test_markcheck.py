@@ -1110,5 +1110,56 @@ class TestPaletteParity(unittest.TestCase):
                          f":root is missing {used - defined}")
 
 
+class TestDeploymentRoutes(unittest.TestCase):
+    """web/vercel.json decides which URLs reach the counter function.
+
+    The scanner is linked from the other pages as a relative "index.html" so
+    those pages still navigate when opened from disk. On the deployed site that
+    path is a static file, which skips the function entirely and leaves the
+    visit-count placeholder sitting in the document as an inert comment. The
+    route table has to close that gap, and nothing else in the suite looks at
+    it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(os.path.dirname(SCRIPT), "web", "vercel.json"),
+                  encoding="utf-8") as fh:
+            cls.cfg = json.load(fh)
+
+    def _routes(self):
+        return self.cfg["routes"]
+
+    def test_root_is_served_by_the_function(self):
+        self.assertTrue(
+            any(r.get("src") == "/" and r.get("dest") == "/api/index"
+                for r in self._routes()),
+            "/ no longer reaches the counter function")
+
+    def test_index_html_canonicalises_to_root(self):
+        hit = [r for r in self._routes() if r.get("src") == "/index.html"]
+        self.assertEqual(len(hit), 1, "no rule for /index.html")
+        self.assertIn(hit[0].get("status"), (301, 308),
+                      "must be a permanent redirect")
+        self.assertEqual(hit[0].get("headers", {}).get("Location"), "/")
+
+    def test_the_redirect_is_matched_before_the_filesystem(self):
+        # Vercel walks the list in order; a filesystem handler placed first
+        # would serve the static file and the redirect would never run.
+        order = [r.get("src") or r.get("handle") for r in self._routes()]
+        self.assertLess(order.index("/index.html"), order.index("filesystem"))
+
+    def test_the_relative_link_the_redirect_exists_for_is_still_there(self):
+        # If the pages ever switch to an absolute "/" the redirect stops being
+        # load-bearing -- but it is the relative form that keeps the offline
+        # copy navigable, so this guards the reason rather than the mechanism.
+        here = os.path.dirname(SCRIPT)
+        for name in ("about.template.html", "changelog.template.html"):
+            with open(os.path.join(here, "tools", name),
+                      encoding="utf-8") as fh:
+                self.assertIn('href="index.html"', fh.read(),
+                              f"{name} no longer links to the scanner")
+
+
 if __name__ == "__main__":
     unittest.main()

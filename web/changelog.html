@@ -243,6 +243,12 @@ Unicode character scanner.">
     <p>Every release, what changed, and why.</p>
   </header>
 
+<section class="card glass release"><h2><span class="ver">2.4.2</span></h2>
+<h3 class="tagline">Fixed</h3>
+<ul><li><strong>The visit counter vanished after navigating scanner to about and back.</strong> The about and changelog pages link to the scanner as a relative <code>index.html</code>, which is what keeps them navigable when the pages are opened from disk. On the deployed site that path was served straight off the filesystem, skipping the function that substitutes the count — so the placeholder arrived in the browser as an inert HTML comment and the counter simply was not there. <code>/index.html</code> now permanently redirects to <code>/</code>, which also matches the <code>og:url</code> and canonical tags, since those have always named <code>/</code> and never <code>/index.html</code>.</li><li>That redirect created a loop the fix had to close as well: the function's own failure path redirected to <code>/index.html</code>, which now comes back to <code>/</code> and lands in the function again. A missing bundle is a broken deploy rather than a runtime failure worth papering over, so it now answers directly with a small self-contained page pointing at the command line tool.</li></ul>
+<h3 class="tagline">Added</h3>
+<ul><li><code>TestDeploymentRoutes</code> reads <code>web/vercel.json</code> and checks that <code>/</code> still reaches the function, that <code>/index.html</code> permanently redirects to <code>/</code>, that the redirect is ordered ahead of the filesystem handler, and that the relative link the redirect exists for is still in the templates. Nothing else in the suite looked at the route table.</li><li><code>tools/check_api.js</code> now covers the missing-document path and asserts it sends no <code>Location</code> header at all.</li></ul>
+</section>
 <section class="card glass release"><h2><span class="ver">2.4.1</span></h2>
 <h3 class="tagline">Changed</h3>
 <ul><li><strong>The visit counter is redrawn as a 1950s tachometer.</strong> The first attempt was a neon dial that read as cheap against a page built on restraint. It is now a Smiths-style instrument: a vanilla face with a printed scale, subdivided minor marks, a polished bezel, a tapered red pointer with its counterweight tail, and a domed crystal throwing a highlight across the upper left. Each digit sits under its own glass dome, the way an odometer reads through a curved window.</li><li>The final decade of the scale is printed as a <strong>redline</strong>, so a millionth visit puts the needle into it. The scale itself is unchanged: still logarithmic, still one major mark per decade.</li><li>The dial colours are deliberately <strong>not themed</strong>. A physical instrument does not repaint itself when the room lights change, so the cream face is constant in light and dark and reads as an object set into the page rather than part of its chrome. Only the caption follows the theme, because it is printed on the page and not on the dial.</li><li>Minor marks sit at 8 degrees, five to a decade. Like the 40-degree major spacing, 8 divides 360 exactly, so the subdivision closes cleanly with no stray partial mark where the scale meets the gap.</li></ul>
@@ -344,7 +350,7 @@ Unicode character scanner.">
 </section>
 
   <footer>
-    markcheck 2.4.1 &middot; MIT licensed &middot;
+    markcheck 2.4.2 &middot; MIT licensed &middot;
     <a href="https://github.com/MavProDev/markcheck" rel="noopener noreferrer">source
     on GitHub</a><br>
     Generated from CHANGELOG.md at build time; never edited by hand.

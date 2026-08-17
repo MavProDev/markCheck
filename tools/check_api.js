@@ -182,6 +182,37 @@ async function run(env) {
               "a publishable key in Authorization is rejected as a bad JWT");
   });
 
+  // If the bundled document is missing, the function must NOT redirect. The
+  // route table canonicalises /index.html to /, so a redirect there comes
+  // straight back here and loops until the browser gives up.
+  {
+    const fs = require("fs");
+    const real = fs.readFileSync;
+    fs.readFileSync = function (p, enc) {
+      if (String(p).endsWith("index.html")) {
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      }
+      return real.apply(this, arguments);
+    };
+    let res;
+    try {
+      res = await run({});
+    } finally {
+      fs.readFileSync = real;
+    }
+    check("missing document: does not redirect into a loop", () => {
+      assert.ok(res.statusCode < 300 || res.statusCode >= 400,
+                `redirected with ${res.statusCode}; /index.html returns here`);
+      assert.strictEqual(res.headers.location, undefined,
+                         "a Location header would bounce back to this handler");
+    });
+    check("missing document: still answers with something readable", () => {
+      assert.ok(/text\/html/.test(res.headers["content-type"] || ""));
+      assert.ok(res.body.length > 0, "empty response");
+      assert.ok(/github\.com/.test(res.body), "no route to the tool offered");
+    });
+  }
+
   // The counter must never leak anything about the visitor.
   check("no request metadata is sent to storage", () => {
     const src = require("fs").readFileSync(HANDLER, "utf8");

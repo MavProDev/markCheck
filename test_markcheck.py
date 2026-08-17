@@ -7,6 +7,7 @@ import io
 import json
 import os
 import random
+import re
 import subprocess
 import sys
 import tempfile
@@ -207,6 +208,20 @@ class TestCleanPath(unittest.TestCase):
         # a dot in the directory must not be treated as the file extension
         self.assertEqual(m._clean_path("v1.2/notes"),
                          os.path.join("v1.2", "notes.clean"))
+
+    def test_leading_dot_is_a_name_not_an_extension(self):
+        # ".env" is a filename, not "" with extension "env". Splitting on the
+        # leading dot produced ".clean.env", which buries the original name.
+        self.assertEqual(m._clean_path(".env"), ".env.clean")
+        self.assertEqual(m._clean_path(".bashrc"), ".bashrc.clean")
+        self.assertEqual(m._clean_path("dir/.env"),
+                         os.path.join("dir", ".env.clean"))
+
+    def test_trailing_dot_does_not_produce_a_trailing_dot(self):
+        # "notes." has no extension after the dot. The old split yielded
+        # "notes.clean.", a name Windows cannot represent at all.
+        self.assertEqual(m._clean_path("notes."), "notes.clean")
+        self.assertFalse(m._clean_path("notes.").endswith("."))
 
 
 class TestMainInProcess(unittest.TestCase):
@@ -1026,6 +1041,69 @@ class TestChangelogRendering(unittest.TestCase):
     # matches on what a leak looks like instead of on bare substrings. The
     # substring version rejected a changelog entry that merely mentioned
     # "@media", which is a false positive, not a leak.
+
+
+class TestPaletteParity(unittest.TestCase):
+    """The scanner page carries its own copy of the design tokens.
+
+    tools/shared.css is injected into the about and changelog pages, but the
+    scanner page is assembled separately and keeps a parallel palette. The two
+    have been kept in step by hand so far, which is not a guarantee. Anything
+    defined in both must agree; the scanner is free to define extras that the
+    other pages have no use for.
+    """
+
+    TOKEN = re.compile(r"(--[a-z0-9-]+)\s*:\s*([^;]+);")
+
+    @staticmethod
+    def _block(text, selector):
+        """The declarations of the first rule matching selector."""
+        start = text.index(selector)
+        return text[start:text.index("}", start)]
+
+    def _tokens(self, text, selector):
+        return {name: value.strip()
+                for name, value in self.TOKEN.findall(
+                    self._block(text, selector))}
+
+    def _compare(self, selector):
+        here = os.path.dirname(SCRIPT)
+        with open(os.path.join(here, "tools", "page.template.html"),
+                  encoding="utf-8") as fh:
+            page = self._tokens(fh.read(), selector)
+        with open(os.path.join(here, "tools", "shared.css"),
+                  encoding="utf-8") as fh:
+            shared = self._tokens(fh.read(), selector)
+        self.assertTrue(shared, f"no tokens parsed for {selector}")
+        common = set(page) & set(shared)
+        self.assertGreater(len(common), 15, "parser found almost no overlap; "
+                                            "the palettes probably moved")
+        drifted = {k: (page[k], shared[k])
+                   for k in common if page[k] != shared[k]}
+        self.assertEqual(drifted, {},
+                         f"palette drift in {selector}: {drifted}")
+
+    def test_light_palette_agrees(self):
+        self._compare(":root {")
+
+    def test_dark_palette_agrees(self):
+        self._compare(':root[data-theme="dark"]')
+
+    def test_the_counter_tokens_are_defined_where_they_are_used(self):
+        # The counter lives on the scanner page, which does not read
+        # shared.css. Referencing a token defined only there renders the dial
+        # invisible -- silently, since an unresolved custom property is not an
+        # error.
+        here = os.path.dirname(SCRIPT)
+        with open(os.path.join(here, "tools", "page.template.html"),
+                  encoding="utf-8") as fh:
+            page = fh.read()
+        used = set(re.findall(r"var\((--aqua[a-z-]*)\)", page))
+        self.assertTrue(used, "counter no longer uses the aqua tokens")
+        for selector in (":root {", ':root[data-theme="dark"]'):
+            defined = set(self._tokens(page, selector))
+            self.assertEqual(used - defined, set(),
+                             f"{selector} is missing {used - defined}")
 
 
 if __name__ == "__main__":

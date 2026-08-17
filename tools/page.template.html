@@ -36,6 +36,12 @@ __SOCIAL__
     --faint: rgba(0, 0, 0, 0.045);
     --accent: #0071e3;
     --accent-ink: #ffffff;
+    /* Instrument aqua, for the visit counter's dial. Mirrors shared.css;
+       test_markcheck.TestPaletteParity fails if the two ever disagree. */
+    --aqua: #00919f;
+    --aqua-hot: #00b3c4;
+    --aqua-ink: #007784;
+    --aqua-glow: rgba(0, 145, 159, 0.28);
     --ok: #1d8a4e;
     --info: #6e6e73;
     --low: #0a7ea4;
@@ -67,6 +73,8 @@ __SOCIAL__
       --dim: #98989d;
       --faint: rgba(255, 255, 255, 0.06);
       --accent: #0a84ff;
+      --aqua: #00e5ff; --aqua-hot: #a8fbff; --aqua-ink: #5ce1ff;
+      --aqua-glow: rgba(0, 229, 255, 0.55);
       --ok: #30d158;
       --info: #98989d;
       --low: #64d2ff;
@@ -90,6 +98,8 @@ __SOCIAL__
     --dim: #98989d;
     --faint: rgba(255, 255, 255, 0.06);
     --accent: #0a84ff;
+    --aqua: #00e5ff; --aqua-hot: #a8fbff; --aqua-ink: #5ce1ff;
+    --aqua-glow: rgba(0, 229, 255, 0.55);
     --ok: #30d158;
     --info: #98989d;
     --low: #64d2ff;
@@ -339,11 +349,125 @@ __SOCIAL__
     color: var(--dim); font-size: 13.5px; text-align: center;
   }
   footer a { color: var(--accent); }
+  /* The visit counter, built as an instrument rather than a label.
+
+     The dial is a tachometer that measures ORDER OF MAGNITUDE, not raw count:
+     the needle tracks log10(visits), one major tick per decade. A linear gauge
+     would sit pinned at zero for the site's first few thousand visitors and
+     then pinned at full forever after — this one is legible at six visits and
+     still legible at a million, and never needs rescaling.
+
+     The geometry is chosen so the arithmetic comes out whole: a 240deg sweep
+     over 6 decades is exactly 40deg per decade, and 40 divides 360 exactly, so
+     the tick bezel repeats cleanly all the way round with no masking needed to
+     hide strays in the gap at the bottom.
+
+     The count arrives already in the HTML from the server (web/api/index.js).
+     Nothing here fetches anything, and --rev is an inline custom property, so
+     the whole instrument is static markup plus CSS. */
+  @property --rev {
+    syntax: "<number>"; inherits: true; initial-value: 0;
+  }
   .visits {
-    display: inline-flex; align-items: center; gap: 7px; margin-top: 12px;
-    padding: 6px 13px; border-radius: 999px; font-size: 12.5px;
-    border: 1px solid var(--edge); background: var(--faint);
+    --arc-start: 240deg;
+    --arc-sweep: 240deg;
+    display: flex; align-items: center; justify-content: center; gap: 18px;
+    width: 100%; max-width: 380px; margin: 20px auto 4px;
+    padding: 15px 22px; border-radius: 20px;
+    position: relative; overflow: hidden;
+    animation: rev-up 1.5s var(--ease) both;
+  }
+  /* A specular sweep across the top-left, the same cue the cards use. */
+  .visits::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(133deg,
+      color-mix(in srgb, var(--edge-lit) 45%, transparent) 0%,
+      transparent 46%);
+  }
+  @keyframes rev-up { from { --rev: 0; } }
+
+  .tach { position: relative; flex: none; width: 62px; height: 62px; }
+  .tach i { position: absolute; inset: 0; display: block; border-radius: 50%; }
+
+  /* The lit arc, as a band rather than a wedge. Everything past the needle
+     stays unlit, so the gauge reads as a fill as well as a pointer. The band
+     stops short of the rim to leave the tick bezel its own clear ring; the two
+     masks must not overlap or the arc simply paints over the ticks. */
+  .tach .sweep {
+    background: conic-gradient(from var(--arc-start),
+      var(--aqua) 0deg,
+      var(--aqua-hot) calc(var(--rev) * var(--arc-sweep)),
+      color-mix(in srgb, var(--dim) 22%, transparent)
+        calc(var(--rev) * var(--arc-sweep)),
+      color-mix(in srgb, var(--dim) 22%, transparent) var(--arc-sweep),
+      transparent var(--arc-sweep));
+    -webkit-mask: radial-gradient(closest-side, transparent 56%, #000 58%,
+                                  #000 82%, transparent 84%);
+            mask: radial-gradient(closest-side, transparent 56%, #000 58%,
+                                  #000 82%, transparent 84%);
+    filter: drop-shadow(0 0 5px var(--aqua-glow));
+  }
+  /* Nine ticks at 40deg: seven across the arc, one per decade, and two in the
+     bottom gap that read as the rest of the bezel. */
+  .tach .ticks {
+    background: repeating-conic-gradient(from var(--arc-start),
+      var(--dim) 0deg 1.8deg, transparent 1.8deg 40deg);
+    -webkit-mask: radial-gradient(closest-side, transparent 88%, #000 90%);
+            mask: radial-gradient(closest-side, transparent 88%, #000 90%);
+    opacity: .5;
+  }
+  .tach .needle::before {
+    content: ""; position: absolute; left: 50%; bottom: 50%;
+    width: 2px; height: 36%; margin-left: -1px; border-radius: 2px;
+    background: linear-gradient(to top,
+      color-mix(in srgb, var(--aqua-hot) 25%, transparent), var(--aqua-hot));
+    box-shadow: 0 0 7px var(--aqua-glow);
+    transform-origin: 50% 100%;
+    transform: rotate(calc(var(--arc-start) + var(--rev) * var(--arc-sweep)));
+  }
+  .tach .hub {
+    inset: calc(50% - 4px); width: 8px; height: 8px;
+    background: var(--aqua-hot);
+    box-shadow: 0 0 8px var(--aqua-glow), 0 0 0 3px var(--faint);
+  }
+
+  .readout {
+    display: flex; flex-direction: column; align-items: flex-start;
+    min-width: 0;
+  }
+  /* The digits size fluidly rather than in steps. A busy site reaches eight
+     cells, and eight fixed-width cells overflow a 320px phone and get clipped
+     by the panel; scaling with the viewport keeps every digit on screen at any
+     width without a breakpoint per magnitude. Padding is in em so the cells
+     shrink with the glyphs. */
+  .odo {
+    display: flex; align-items: stretch; gap: .12em; min-width: 0;
+    font: 700 clamp(14px, 4.4vw, 24px)/1 var(--mono);
     font-variant-numeric: tabular-nums;
+  }
+  .odo .d {
+    color: var(--ink); padding: .26em .3em; border-radius: .3em;
+    background: linear-gradient(180deg, var(--faint), transparent);
+    border: 1px solid var(--edge);
+    box-shadow: inset 0 1px 0 var(--edge-lit);
+    text-shadow: 0 0 16px var(--aqua-glow);
+  }
+  .odo .sep { color: var(--dim); align-self: flex-end; padding-bottom: .26em; }
+  .visits .cap {
+    margin-top: 7px; font-size: 10px; font-weight: 600; letter-spacing: .24em;
+    text-transform: uppercase; color: var(--aqua-ink);
+  }
+
+  @media (max-width: 420px) {
+    .visits { gap: 12px; padding: 13px 14px; }
+    .tach { width: 50px; height: 50px; }
+  }
+  /* A glow is decoration; a gauge with no contrast is a bug. */
+  @media (prefers-contrast: more) {
+    .visits::after { display: none; }
+    .odo .d { text-shadow: none; }
+    .tach .sweep, .tach .needle::before, .tach .hub { filter: none;
+      box-shadow: none; }
   }
 
   /* Command palette */
@@ -514,7 +638,7 @@ __SOCIAL__
     and command line version on GitHub</a><br>
     This page is generated from the same character tables the command line tool
     uses, and a parity test proves the two agree.
-    <br><!--VISITOR_COUNT-->
+    <!--VISITOR_COUNT-->
   </footer>
 </main>
 
@@ -522,8 +646,9 @@ __SOCIAL__
   aria-label="Command palette">
   <div class="palette">
     <input id="palette-input" placeholder="Type a command…" spellcheck="false"
-      autocomplete="off">
-    <ul id="palette-list" role="listbox"></ul>
+      autocomplete="off" aria-label="Command" role="combobox"
+      aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list">
+    <ul id="palette-list" role="listbox" aria-label="Commands"></ul>
   </div>
 </div>
 
@@ -813,15 +938,23 @@ let paletteMatches = COMMANDS.slice();
 function paletteRender() {
   const list = $("palette-list");
   if (!paletteMatches.length) {
-    list.innerHTML = '<li class="empty">No matching command</li>';
+    // Not an option, so it must not claim to be one: a listbox whose children
+    // are not options is what screen readers choke on.
+    list.innerHTML = '<li class="empty" role="presentation">' +
+      "No matching command</li>";
+    $("palette-input").removeAttribute("aria-activedescendant");
     return;
   }
   list.innerHTML = paletteMatches.map(function (c, i) {
-    return '<li role="option" data-i="' + i + '" aria-selected="' +
-      (i === paletteIndex) + '">' + escapeHtml(c.name) +
+    return '<li role="option" id="palette-opt-' + i + '" data-i="' + i +
+      '" aria-selected="' + (i === paletteIndex) + '">' + escapeHtml(c.name) +
       (c.hint ? '<span class="hint">' + escapeHtml(c.hint) + "</span>" : "") +
       "</li>";
   }).join("");
+  // Arrow keys move the highlight; without this the move is purely visual and
+  // assistive tech is never told the selection changed.
+  $("palette-input").setAttribute("aria-activedescendant",
+    "palette-opt-" + paletteIndex);
 }
 
 function paletteFilter(q) {

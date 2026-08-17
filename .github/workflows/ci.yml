@@ -36,6 +36,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      # The Python is linted; the JavaScript had no gate at all. A syntax error
+      # in the deployment function reaches production and fails silently there,
+      # because the function is built to swallow its own errors.
+      - name: JavaScript parses
+        run: |
+          node --check web/api/index.js
+          node --check tools/check_api.js
+          node --check tools/build_og.js
+
       - name: Browser build matches the Python module
         run: python tools/check_parity.py
 

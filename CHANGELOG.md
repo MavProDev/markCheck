@@ -1,5 +1,52 @@
 # Changelog
 
+## 2.4.0
+### Added
+- **The visit counter is now an instrument.** It was the least considered
+  element on a page otherwise built with care: a small grey pill. It is now a
+  tachometer whose needle tracks the **order of magnitude** of the count rather
+  than the count itself — one major tick per decade, six decades to full scale.
+  A linear gauge would sit pinned at zero through the site's first few thousand
+  visitors and pinned at full ever after; this one is legible at six visits and
+  at a million, and never needs rescaling.
+- The dial geometry is chosen so the arithmetic is exact rather than
+  approximately right: a 240 degree sweep across six decades is 40 degrees per
+  decade, and 40 divides 360, so the tick bezel repeats cleanly the whole way
+  round with no masking needed to hide stray marks in the gap at the bottom.
+- Digits sit in individual cells the way an odometer drum reads, with an
+  electric-aqua glow and cap. The whole instrument is a single `role="img"`
+  carrying one sentence, so assistive technology is given a coherent statement
+  instead of a gauge followed by loose digits.
+- The counter is still substituted into the document on the server. Nothing
+  about it fetches anything, and `connect-src 'none'` is untouched.
+
+### Fixed
+- **`--strip` produced wrong filenames for dotfiles and for names ending in a
+  dot.** `.env` became `.clean.env`, burying the original name, and `notes.`
+  became `notes.clean.` — a filename Windows cannot represent at all, on a
+  project that tests on Windows. A dot alone does not make an extension: a
+  leading dot is part of the name, and a trailing dot leaves nothing after it.
+  Both now fall back to appending the suffix. `.env` becomes `.env.clean`.
+- The command palette's input was labelled only by its placeholder and had no
+  combobox semantics, so arrow-key selection moved the highlight visually while
+  telling assistive technology nothing. It now carries a label, the combobox
+  role, and an `aria-activedescendant` that tracks the selection. The "no
+  matching command" row no longer claims to be a selectable option.
+- The deployment function substituted the count with a replacement *string*,
+  which `String.replace` scans for `$&` and friends. Nothing it emits contains
+  a dollar sign, but that was a property of the current copy rather than a
+  guarantee; it now uses a function replacement.
+
+### Notes
+- `tools/shared.css` described itself as the single source of design tokens for
+  all three pages. It is not: the scanner page is assembled by a different path
+  and keeps its own palette. The comment has been corrected, and the two are
+  now held together by a test that fails if any token defined in both
+  disagrees, rather than by the discipline that had been holding them.
+- CI now syntax-checks the JavaScript. It had none: a parse error in the
+  deployment function would have reached production and failed *silently*
+  there, since that function is deliberately built to swallow its own errors.
+
 ## 2.3.1
 ### Changed
 - **The visitor counter is live.** The code shipped in 2.2.1; what was missing

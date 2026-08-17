@@ -26,11 +26,16 @@ cannot do, how it handles your text, and how to use it.">
 <meta name="twitter:description" content="What markcheck does, what it deliberately cannot do, what happens to your text, and how to read the results.">
 <meta name="twitter:image" content="https://markcheck.org/og.png">
 <style>
-  /* Shared design system for the generated pages. Injected by build_web.py so
-     the three pages cannot drift apart in palette, glass, or motion. Light is
-     the base; dark overrides only the tokens. Both are reachable through
-     [data-theme] so the manual switch wins in either direction, including
-     against the operating system preference. */
+  /* Design system for the about and changelog pages, injected by build_web.py.
+     The scanner page is assembled separately and carries its own copy of the
+     palette, so this file is not the single source for all three -- a claim an
+     earlier version of this comment made and did not earn. The two palettes
+     are held together by test_markcheck.TestPaletteParity, which fails if any
+     token defined in both ever disagrees.
+
+     Light is the base; dark overrides only the tokens. Both are reachable
+     through [data-theme] so the manual switch wins in either direction,
+     including against the operating system preference. */
   :root {
     --bg: #f2f2f7;
     --bg-tint-a: #d8e6ff;
@@ -45,6 +50,12 @@ cannot do, how it handles your text, and how to use it.">
     --dim: #6e6e73;
     --faint: rgba(0, 0, 0, 0.045);
     --accent: #0071e3;
+    /* Instrument aqua. Used only by the visit counter, but kept here with the
+       rest of the palette so it cannot drift from the theme it sits in. */
+    --aqua: #00919f;
+    --aqua-hot: #00b3c4;
+    --aqua-ink: #007784;
+    --aqua-glow: rgba(0, 145, 159, 0.28);
     --ok: #1d8a4e;
     --info: #6e6e73;
     --low: #0a7ea4;
@@ -68,6 +79,8 @@ cannot do, how it handles your text, and how to use it.">
       --ink: #f5f5f7; --dim: #98989d; --faint: rgba(255, 255, 255, 0.06);
       --accent: #0a84ff; --ok: #30d158; --info: #98989d; --low: #64d2ff;
       --med: #ff9f0a; --high: #ff453a;
+      --aqua: #00e5ff; --aqua-hot: #a8fbff; --aqua-ink: #5ce1ff;
+      --aqua-glow: rgba(0, 229, 255, 0.55);
       --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
     }
   }
@@ -79,6 +92,8 @@ cannot do, how it handles your text, and how to use it.">
     --ink: #f5f5f7; --dim: #98989d; --faint: rgba(255, 255, 255, 0.06);
     --accent: #0a84ff; --ok: #30d158; --info: #98989d; --low: #64d2ff;
     --med: #ff9f0a; --high: #ff453a;
+    --aqua: #00e5ff; --aqua-hot: #a8fbff; --aqua-ink: #5ce1ff;
+    --aqua-glow: rgba(0, 229, 255, 0.55);
     --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
   }
 
@@ -520,7 +535,7 @@ cat file.txt | markcheck --strip --stdout &gt; clean.txt</code></pre>
   </section>
 
   <footer>
-    markcheck 2.3.1 &middot; MIT licensed &middot;
+    markcheck 2.4.0 &middot; MIT licensed &middot;
     <a href="https://github.com/MavProDev/markcheck" rel="noopener noreferrer">source
     on GitHub</a><br>
     <a href="index.html">Scanner</a> &middot;

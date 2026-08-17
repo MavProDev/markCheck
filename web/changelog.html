@@ -26,11 +26,16 @@ Unicode character scanner.">
 <meta name="twitter:description" content="Every release, what changed, and why.">
 <meta name="twitter:image" content="https://markcheck.org/og.png">
 <style>
-  /* Shared design system for the generated pages. Injected by build_web.py so
-     the three pages cannot drift apart in palette, glass, or motion. Light is
-     the base; dark overrides only the tokens. Both are reachable through
-     [data-theme] so the manual switch wins in either direction, including
-     against the operating system preference. */
+  /* Design system for the about and changelog pages, injected by build_web.py.
+     The scanner page is assembled separately and carries its own copy of the
+     palette, so this file is not the single source for all three -- a claim an
+     earlier version of this comment made and did not earn. The two palettes
+     are held together by test_markcheck.TestPaletteParity, which fails if any
+     token defined in both ever disagrees.
+
+     Light is the base; dark overrides only the tokens. Both are reachable
+     through [data-theme] so the manual switch wins in either direction,
+     including against the operating system preference. */
   :root {
     --bg: #f2f2f7;
     --bg-tint-a: #d8e6ff;
@@ -45,6 +50,12 @@ Unicode character scanner.">
     --dim: #6e6e73;
     --faint: rgba(0, 0, 0, 0.045);
     --accent: #0071e3;
+    /* Instrument aqua. Used only by the visit counter, but kept here with the
+       rest of the palette so it cannot drift from the theme it sits in. */
+    --aqua: #00919f;
+    --aqua-hot: #00b3c4;
+    --aqua-ink: #007784;
+    --aqua-glow: rgba(0, 145, 159, 0.28);
     --ok: #1d8a4e;
     --info: #6e6e73;
     --low: #0a7ea4;
@@ -68,6 +79,8 @@ Unicode character scanner.">
       --ink: #f5f5f7; --dim: #98989d; --faint: rgba(255, 255, 255, 0.06);
       --accent: #0a84ff; --ok: #30d158; --info: #98989d; --low: #64d2ff;
       --med: #ff9f0a; --high: #ff453a;
+      --aqua: #00e5ff; --aqua-hot: #a8fbff; --aqua-ink: #5ce1ff;
+      --aqua-glow: rgba(0, 229, 255, 0.55);
       --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
     }
   }
@@ -79,6 +92,8 @@ Unicode character scanner.">
     --ink: #f5f5f7; --dim: #98989d; --faint: rgba(255, 255, 255, 0.06);
     --accent: #0a84ff; --ok: #30d158; --info: #98989d; --low: #64d2ff;
     --med: #ff9f0a; --high: #ff453a;
+    --aqua: #00e5ff; --aqua-hot: #a8fbff; --aqua-ink: #5ce1ff;
+    --aqua-glow: rgba(0, 229, 255, 0.55);
     --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
   }
 
@@ -238,6 +253,14 @@ Unicode character scanner.">
     <p>Every release, what changed, and why.</p>
   </header>
 
+<section class="card glass release"><h2><span class="ver">2.4.0</span></h2>
+<h3 class="tagline">Added</h3>
+<ul><li><strong>The visit counter is now an instrument.</strong> It was the least considered element on a page otherwise built with care: a small grey pill. It is now a tachometer whose needle tracks the <strong>order of magnitude</strong> of the count rather than the count itself — one major tick per decade, six decades to full scale. A linear gauge would sit pinned at zero through the site's first few thousand visitors and pinned at full ever after; this one is legible at six visits and at a million, and never needs rescaling.</li><li>The dial geometry is chosen so the arithmetic is exact rather than approximately right: a 240 degree sweep across six decades is 40 degrees per decade, and 40 divides 360, so the tick bezel repeats cleanly the whole way round with no masking needed to hide stray marks in the gap at the bottom.</li><li>Digits sit in individual cells the way an odometer drum reads, with an electric-aqua glow and cap. The whole instrument is a single <code>role=&quot;img&quot;</code> carrying one sentence, so assistive technology is given a coherent statement instead of a gauge followed by loose digits.</li><li>The counter is still substituted into the document on the server. Nothing about it fetches anything, and <code>connect-src 'none'</code> is untouched.</li></ul>
+<h3 class="tagline">Fixed</h3>
+<ul><li><strong><code>--strip</code> produced wrong filenames for dotfiles and for names ending in a dot.</strong> <code>.env</code> became <code>.clean.env</code>, burying the original name, and <code>notes.</code> became <code>notes.clean.</code> — a filename Windows cannot represent at all, on a project that tests on Windows. A dot alone does not make an extension: a leading dot is part of the name, and a trailing dot leaves nothing after it. Both now fall back to appending the suffix. <code>.env</code> becomes <code>.env.clean</code>.</li><li>The command palette's input was labelled only by its placeholder and had no combobox semantics, so arrow-key selection moved the highlight visually while telling assistive technology nothing. It now carries a label, the combobox role, and an <code>aria-activedescendant</code> that tracks the selection. The &quot;no matching command&quot; row no longer claims to be a selectable option.</li><li>The deployment function substituted the count with a replacement <em>string</em>, which <code>String.replace</code> scans for <code>$&amp;</code> and friends. Nothing it emits contains a dollar sign, but that was a property of the current copy rather than a guarantee; it now uses a function replacement.</li></ul>
+<h3 class="tagline">Notes</h3>
+<ul><li><code>tools/shared.css</code> described itself as the single source of design tokens for all three pages. It is not: the scanner page is assembled by a different path and keeps its own palette. The comment has been corrected, and the two are now held together by a test that fails if any token defined in both disagrees, rather than by the discipline that had been holding them.</li><li>CI now syntax-checks the JavaScript. It had none: a parse error in the deployment function would have reached production and failed <em>silently</em> there, since that function is deliberately built to swallow its own errors.</li></ul>
+</section>
 <section class="card glass release"><h2><span class="ver">2.3.1</span></h2>
 <h3 class="tagline">Changed</h3>
 <ul><li><strong>The visitor counter is live.</strong> The code shipped in 2.2.1; what was missing was the storage behind it, which is now provisioned. The count is still resolved on the server and substituted into the document before it is sent, so the page continues to make zero network requests and <code>connect-src 'none'</code> is untouched.</li><li>The counter's credential is now a <strong>publishable</strong> key, and the environment variable is named <code>SUPABASE_KEY</code> rather than <code>SUPABASE_SERVICE_KEY</code> to say so honestly. The increment runs through a <code>SECURITY DEFINER</code> function, so the key needs no privilege beyond <code>EXECUTE</code> on that one function — it cannot read the table it increments. A service key would have granted the deployment full access to the database in order to add one to a number.</li><li>The key is sent on the <code>apikey</code> header alone. Publishable keys are not JWTs, so repeating one in <code>Authorization: Bearer</code> makes the gateway reject the call as a malformed token. That failure would have been invisible: the function swallows storage errors by design and serves the page with the counter hidden, which is indistinguishable from not being configured at all.</li><li>Stored data is unchanged and remains a single integer in a single row. The table has row level security enabled with no policies <strong>and</strong> the default API grants revoked, so it is unreachable through the API by either route.</li></ul>
@@ -325,7 +348,7 @@ Unicode character scanner.">
 </section>
 
   <footer>
-    markcheck 2.3.1 &middot; MIT licensed &middot;
+    markcheck 2.4.0 &middot; MIT licensed &middot;
     <a href="https://github.com/MavProDev/markcheck" rel="noopener noreferrer">source
     on GitHub</a><br>
     Generated from CHANGELOG.md at build time; never edited by hand.

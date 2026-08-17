@@ -86,12 +86,42 @@ function markup(count) {
   if (count === null) {
     return "";
   }
+  const shown = count.toLocaleString("en-US");
+  const word = count === 1 ? "visit" : "visits";
+
+  // The dial reads order of magnitude, not raw count: one major tick per
+  // decade, six decades to full scale. A linear gauge would sit pinned at zero
+  // for the site's first few thousand visitors and pinned at full ever after.
+  // log10(count + 1) keeps a single visit slightly off the stop rather than
+  // looking broken.
+  const rev = Math.min(1, Math.log10(count + 1) / 6);
+
+  // One cell per digit, the way an odometer drum reads. Commas sit between
+  // cells rather than inside one.
+  const cells = shown
+    .split("")
+    .map(function (ch) {
+      return ch === ","
+        ? '<span class="sep">,</span>'
+        : '<span class="d">' + ch + "</span>";
+    })
+    .join("");
+
+  // The whole instrument is one image to assistive tech: a single sentence,
+  // rather than a gauge and a row of loose digits read out one at a time.
   return (
-    '<span class="visits" title="Counted on the server. No IP address, user ' +
-    'agent, or per-visitor record is stored.">' +
-    count.toLocaleString("en-US") +
-    (count === 1 ? " visit" : " visits") +
-    "</span>"
+    '<div class="visits glass" style="--rev:' + rev.toFixed(4) + '"' +
+    ' role="img" aria-label="' + shown + " " + word + ". Counted on the " +
+    'server. No IP address, user agent, or per-visitor record is stored.">' +
+    '<span class="tach" aria-hidden="true">' +
+    '<i class="ticks"></i><i class="sweep"></i>' +
+    '<i class="needle"></i><i class="hub"></i>' +
+    "</span>" +
+    '<span class="readout" aria-hidden="true">' +
+    '<span class="odo">' + cells + "</span>" +
+    '<span class="cap">' + word + "</span>" +
+    "</span>" +
+    "</div>"
   );
 }
 
@@ -118,5 +148,9 @@ module.exports = async function handler(req, res) {
   // edge cache. The static /index.html remains cacheable for everything else.
   res.setHeader("Cache-Control", "no-store");
   res.statusCode = 200;
-  res.end(page.replace(PLACEHOLDER, markup(count)));
+  // A function replacement, not a string one: String.replace reads $& and $'
+  // in a replacement *string* as patterns, which would splice parts of the
+  // document into itself. Nothing markup() emits contains a dollar sign today,
+  // but that is a property of the current copy rather than a guarantee.
+  res.end(page.replace(PLACEHOLDER, function () { return markup(count); }));
 };

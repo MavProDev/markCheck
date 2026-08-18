@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.4.4
+### Fixed
+- **The about and changelog pages scrolled sideways on a narrow phone.** Their
+  header carries a wordmark, two links and the theme toggle, which at 320px is
+  a few pixels wider than the screen — so the toggle hung off the right edge
+  and dragged the whole page into a horizontal scroll. The scanner page escaped
+  it only by accident, because it hides its command-palette button below 560px.
+  The header now tightens its spacing at narrow widths, which reclaims far more
+  than the few pixels needed without dropping any control.
+- Found by rendering all three pages at 320px rather than by reading the CSS;
+  2px and 3px offsets are not the kind of thing that shows up in a diff.
+
 ## 2.4.3
 ### Fixed
 - **2.4.2 could not deploy.** Its `vercel.json` carried a `"//"` key holding an

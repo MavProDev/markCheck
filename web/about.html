@@ -172,6 +172,18 @@ cannot do, how it handles your text, and how to use it.">
   footer a { color: var(--accent); }
 
   @media (max-width: 560px) { main { padding: 16px 12px 64px; } }
+  /* The header carries a wordmark, two links and the theme toggle. At the
+     narrowest phone width that is a few pixels wider than the viewport, and
+     the toggle — the last item — hangs off the right edge and drags the page
+     into a sideways scroll. The scanner page escapes this only because it
+     hides its command-palette button below 560px. Tightening the spacing
+     reclaims far more than the few pixels needed, without dropping any
+     control the reader might want to reach. */
+  @media (max-width: 420px) {
+    body > nav { gap: 4px; padding: 10px 8px; }
+    body > nav a, body > nav .ghost { padding: 7px 8px; }
+    body > nav .wordmark { font-size: 15px; }
+  }
 
   /* Motion, transparency, and contrast are user preferences, not decoration
      we get to insist on. */
@@ -525,7 +537,7 @@ cat file.txt | markcheck --strip --stdout &gt; clean.txt</code></pre>
   </section>
 
   <footer>
-    markcheck 2.4.3 &middot; MIT licensed &middot;
+    markcheck 2.4.4 &middot; MIT licensed &middot;
     <a href="https://github.com/MavProDev/markcheck" rel="noopener noreferrer">source
     on GitHub</a><br>
     <a href="index.html">Scanner</a> &middot;

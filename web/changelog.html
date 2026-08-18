@@ -172,6 +172,18 @@ Unicode character scanner.">
   footer a { color: var(--accent); }
 
   @media (max-width: 560px) { main { padding: 16px 12px 64px; } }
+  /* The header carries a wordmark, two links and the theme toggle. At the
+     narrowest phone width that is a few pixels wider than the viewport, and
+     the toggle — the last item — hangs off the right edge and drags the page
+     into a sideways scroll. The scanner page escapes this only because it
+     hides its command-palette button below 560px. Tightening the spacing
+     reclaims far more than the few pixels needed, without dropping any
+     control the reader might want to reach. */
+  @media (max-width: 420px) {
+    body > nav { gap: 4px; padding: 10px 8px; }
+    body > nav a, body > nav .ghost { padding: 7px 8px; }
+    body > nav .wordmark { font-size: 15px; }
+  }
 
   /* Motion, transparency, and contrast are user preferences, not decoration
      we get to insist on. */
@@ -243,6 +255,10 @@ Unicode character scanner.">
     <p>Every release, what changed, and why.</p>
   </header>
 
+<section class="card glass release"><h2><span class="ver">2.4.4</span></h2>
+<h3 class="tagline">Fixed</h3>
+<ul><li><strong>The about and changelog pages scrolled sideways on a narrow phone.</strong> Their header carries a wordmark, two links and the theme toggle, which at 320px is a few pixels wider than the screen — so the toggle hung off the right edge and dragged the whole page into a horizontal scroll. The scanner page escaped it only by accident, because it hides its command-palette button below 560px. The header now tightens its spacing at narrow widths, which reclaims far more than the few pixels needed without dropping any control.</li><li>Found by rendering all three pages at 320px rather than by reading the CSS; 2px and 3px offsets are not the kind of thing that shows up in a diff.</li></ul>
+</section>
 <section class="card glass release"><h2><span class="ver">2.4.3</span></h2>
 <h3 class="tagline">Fixed</h3>
 <ul><li><strong>2.4.2 could not deploy.</strong> Its <code>vercel.json</code> carried a <code>&quot;//&quot;</code> key holding an explanation of the redirect rule. JSON has no comments, and Vercel validates the file against a strict schema that rejects any property it does not recognise, so every deployment failed — preview and production alike. The live site was never broken; it kept serving the previous build, which meant the failure was invisible from the outside and the 2.4.2 fix never reached anyone.</li><li>The rationale now lives in <code>web/api/index.js</code>, next to the failure path that depends on it, where a comment is actually legal.</li></ul>
@@ -356,7 +372,7 @@ Unicode character scanner.">
 </section>
 
   <footer>
-    markcheck 2.4.3 &middot; MIT licensed &middot;
+    markcheck 2.4.4 &middot; MIT licensed &middot;
     <a href="https://github.com/MavProDev/markcheck" rel="noopener noreferrer">source
     on GitHub</a><br>
     Generated from CHANGELOG.md at build time; never edited by hand.

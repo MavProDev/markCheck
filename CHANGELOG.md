@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.4.5
+### Fixed
+- **The scanner page's header overflowed below 320px**, which 2.4.4 missed. It
+  carries one item more than the other two pages and cleared a 320px phone by
+  six pixels, failing at roughly 300px — a width any page zoom reaches. 2.4.4
+  fixed only `tools/shared.css`, which the scanner page does not read, so it
+  never received that change. It now gets the same narrow-width treatment.
+- **All three headers now wrap rather than merely tightening.** Tightening buys
+  room but has a floor: measured, the tightened-but-unwrapped header still
+  overflowed below roughly 260px. Wrapping has no floor, so no viewport width
+  can push a control off the edge. Nothing is hidden; the row steps onto a
+  second line instead.
+
+### Notes
+- Credit where due: this was raised in review on the 2.2.0 patch, and the part
+  I had dismissed — that the scanner page shared the problem — was correct. I
+  had measured a single viewport width and generalised from it.
+- Verified across 414, 390, 375, 360, 320, 280 and 267px in both themes: no
+  horizontal overflow on any page. A residual few pixels remain on the about
+  page below 240px, from inline content inside the privacy section that I did
+  not isolate; 240px is far below any real device and it is recorded here
+  rather than quietly left out.
+
 ## 2.4.4
 ### Fixed
 - **The about and changelog pages scrolled sideways on a narrow phone.** Their

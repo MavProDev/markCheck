@@ -1,5 +1,33 @@
 # Changelog
 
+## 2.4.5
+### Fixed
+- **The scanner page's header overflowed below 320px**, which 2.4.4 missed. It
+  carries one item more than the other two pages and cleared a 320px phone by
+  six pixels, failing at roughly 300px — a width any page zoom reaches. 2.4.4
+  fixed only `tools/shared.css`, which the scanner page does not read, so it
+  never received that change. It now gets the same narrow-width treatment.
+- **All three headers now wrap rather than merely tightening.** Tightening buys
+  room but has a floor: measured, the tightened-but-unwrapped header still
+  overflowed below roughly 260px. Wrapping has no floor, so no viewport width
+  can push a control off the edge. Nothing is hidden; the row steps onto a
+  second line instead.
+- **The about page's rows could not shrink.** Every row there built as a flex
+  container — the yes/no lines, the severity list, the contents nav — carried
+  the default `min-width: auto` on its text, which refuses to shrink below the
+  longest unbreakable run in it. `connect-src 'none'` is such a run, and it
+  held those rows wider than a narrow viewport no matter what the header did.
+  Letting the items shrink and long runs break fixes the cause instead of
+  tightening something else to compensate.
+
+### Notes
+- Credit where due: this was raised in review on the 2.2.0 patch, and the part
+  I had dismissed — that the scanner page shared the problem — was correct. I
+  had measured a single viewport width and generalised from it.
+- Verified in both themes at 414, 390, 375, 360 and 320px, and every step down
+  to 200px: no horizontal overflow on any of the three pages, at any width
+  tested. Headers stay on one line at 320px and wrap below it.
+
 ## 2.4.4
 ### Fixed
 - **The about and changelog pages scrolled sideways on a narrow phone.** Their

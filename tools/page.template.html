@@ -161,10 +161,22 @@ __SOCIAL__
 
   nav {
     position: sticky; top: 0; z-index: 50;
-    display: flex; align-items: center; gap: 12px;
+    /* Wrapping is the floor under every other measure here. Tightening
+       spacing buys room but runs out; wrapping cannot, so no viewport width
+       and no enlarged text can push a control off the edge. */
+    display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
     padding: 10px 16px; margin: 0 0 8px;
     border-radius: 0; border-width: 0 0 1px;
     background: var(--glass-strong);
+  }
+  /* This header carries one item more than the other two pages, so it runs
+     out of room first: it cleared a 320px phone by six pixels and failed
+     below that, which any page zoom reaches. Same treatment as shared.css
+     gives the about and changelog headers. */
+  @media (max-width: 420px) {
+    nav { gap: 4px; padding: 10px 8px; }
+    nav a, nav .ghost { padding: 7px 8px; }
+    nav .wordmark { font-size: 15px; }
   }
   nav .wordmark {
     font-weight: 700; font-size: 17px; letter-spacing: -0.02em;

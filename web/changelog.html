@@ -134,6 +134,7 @@ Unicode character scanner.">
      positioning and a glass slab. */
   body > nav {
     position: sticky; top: 0; z-index: 50; display: flex; align-items: center;
+    flex-wrap: wrap;
     gap: 10px; padding: 10px 16px; background: var(--glass-strong);
     -webkit-backdrop-filter: blur(28px) saturate(180%);
     backdrop-filter: blur(28px) saturate(180%);
@@ -172,13 +173,16 @@ Unicode character scanner.">
   footer a { color: var(--accent); }
 
   @media (max-width: 560px) { main { padding: 16px 12px 64px; } }
-  /* The header carries a wordmark, two links and the theme toggle. At the
-     narrowest phone width that is a few pixels wider than the viewport, and
-     the toggle — the last item — hangs off the right edge and drags the page
-     into a sideways scroll. The scanner page escapes this only because it
-     hides its command-palette button below 560px. Tightening the spacing
-     reclaims far more than the few pixels needed, without dropping any
-     control the reader might want to reach. */
+  /* The header carries a wordmark, two links and the theme toggle, which at
+     the narrowest phone width is wider than the viewport: the toggle hangs off
+     the right edge and drags the page into a sideways scroll. Tightening the
+     spacing buys back far more room than the few pixels needed, and drops no
+     control the reader might want to reach.
+
+     Tightening alone is not enough, which is why the rule above also wraps.
+     Measured: tightened but unwrapped, this header still overflowed below
+     roughly 260px, which page zoom on a small phone reaches easily. Wrapping
+     has no such floor. */
   @media (max-width: 420px) {
     body > nav { gap: 4px; padding: 10px 8px; }
     body > nav a, body > nav .ghost { padding: 7px 8px; }
@@ -255,6 +259,12 @@ Unicode character scanner.">
     <p>Every release, what changed, and why.</p>
   </header>
 
+<section class="card glass release"><h2><span class="ver">2.4.5</span></h2>
+<h3 class="tagline">Fixed</h3>
+<ul><li><strong>The scanner page's header overflowed below 320px</strong>, which 2.4.4 missed. It carries one item more than the other two pages and cleared a 320px phone by six pixels, failing at roughly 300px — a width any page zoom reaches. 2.4.4 fixed only <code>tools/shared.css</code>, which the scanner page does not read, so it never received that change. It now gets the same narrow-width treatment.</li><li><strong>All three headers now wrap rather than merely tightening.</strong> Tightening buys room but has a floor: measured, the tightened-but-unwrapped header still overflowed below roughly 260px. Wrapping has no floor, so no viewport width can push a control off the edge. Nothing is hidden; the row steps onto a second line instead.</li><li><strong>The about page's rows could not shrink.</strong> Every row there built as a flex container — the yes/no lines, the severity list, the contents nav — carried the default <code>min-width: auto</code> on its text, which refuses to shrink below the longest unbreakable run in it. <code>connect-src 'none'</code> is such a run, and it held those rows wider than a narrow viewport no matter what the header did. Letting the items shrink and long runs break fixes the cause instead of tightening something else to compensate.</li></ul>
+<h3 class="tagline">Notes</h3>
+<ul><li>Credit where due: this was raised in review on the 2.2.0 patch, and the part I had dismissed — that the scanner page shared the problem — was correct. I had measured a single viewport width and generalised from it.</li><li>Verified in both themes at 414, 390, 375, 360 and 320px, and every step down to 200px: no horizontal overflow on any of the three pages, at any width tested. Headers stay on one line at 320px and wrap below it.</li></ul>
+</section>
 <section class="card glass release"><h2><span class="ver">2.4.4</span></h2>
 <h3 class="tagline">Fixed</h3>
 <ul><li><strong>The about and changelog pages scrolled sideways on a narrow phone.</strong> Their header carries a wordmark, two links and the theme toggle, which at 320px is a few pixels wider than the screen — so the toggle hung off the right edge and dragged the whole page into a horizontal scroll. The scanner page escaped it only by accident, because it hides its command-palette button below 560px. The header now tightens its spacing at narrow widths, which reclaims far more than the few pixels needed without dropping any control.</li><li>Found by rendering all three pages at 320px rather than by reading the CSS; 2px and 3px offsets are not the kind of thing that shows up in a diff.</li></ul>
@@ -372,7 +382,7 @@ Unicode character scanner.">
 </section>
 
   <footer>
-    markcheck 2.4.4 &middot; MIT licensed &middot;
+    markcheck 2.4.5 &middot; MIT licensed &middot;
     <a href="https://github.com/MavProDev/markcheck" rel="noopener noreferrer">source
     on GitHub</a><br>
     Generated from CHANGELOG.md at build time; never edited by hand.

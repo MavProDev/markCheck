@@ -93,6 +93,14 @@ __SHARED_CSS__
   .callout.warn { border-left-color: var(--med); }
   @media (max-width: 560px) {
     code { white-space: normal; overflow-wrap: anywhere; }
+    /* Every row on this page built as a flex container hits the same trap:
+       its text is an anonymous flex item carrying min-width:auto, so it
+       refuses to shrink below its longest unbreakable run. "connect-src
+       'none'" is one such run, and it pushed the row past the viewport on a
+       very narrow screen. Letting the items shrink and long runs break fixes
+       the cause, rather than tightening something else to compensate. */
+    .yes, .no, .sev, .toc { min-width: 0; overflow-wrap: anywhere; }
+    .yes > *, .no > *, .sev > *, .toc > * { min-width: 0; }
   }
 </style>
 </head>

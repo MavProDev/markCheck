@@ -12,16 +12,21 @@
   overflowed below roughly 260px. Wrapping has no floor, so no viewport width
   can push a control off the edge. Nothing is hidden; the row steps onto a
   second line instead.
+- **The about page's rows could not shrink.** Every row there built as a flex
+  container — the yes/no lines, the severity list, the contents nav — carried
+  the default `min-width: auto` on its text, which refuses to shrink below the
+  longest unbreakable run in it. `connect-src 'none'` is such a run, and it
+  held those rows wider than a narrow viewport no matter what the header did.
+  Letting the items shrink and long runs break fixes the cause instead of
+  tightening something else to compensate.
 
 ### Notes
 - Credit where due: this was raised in review on the 2.2.0 patch, and the part
   I had dismissed — that the scanner page shared the problem — was correct. I
   had measured a single viewport width and generalised from it.
-- Verified across 414, 390, 375, 360, 320, 280 and 267px in both themes: no
-  horizontal overflow on any page. A residual few pixels remain on the about
-  page below 240px, from inline content inside the privacy section that I did
-  not isolate; 240px is far below any real device and it is recorded here
-  rather than quietly left out.
+- Verified in both themes at 414, 390, 375, 360 and 320px, and every step down
+  to 200px: no horizontal overflow on any of the three pages, at any width
+  tested. Headers stay on one line at 320px and wrap below it.
 
 ## 2.4.4
 ### Fixed
